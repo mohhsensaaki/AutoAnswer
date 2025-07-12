@@ -1,0 +1,9 @@
+# Environment Configuration Template for Milvus Document Service
+# Copy this file to .env and update the values as needed
+
+# Milvus Database Configuration
+MILVUS_URI=http://localhost:19530/
+COLLECTION_NAME=documents
+
+# Vector Configuration
+TEXT_EMBEDDING_DIMENSION=1536 

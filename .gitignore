@@ -1,0 +1,120 @@
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+logs/
+log/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+vector_store_map.db
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+
+# Project specific cache and temp files
+common/__pycache__/
+openai_vector_store/__pycache__/
+openai_vector_store/app/__pycache__/
+openai_vector_store/files/
+chat_question_answering/app/common
+chat_question_answering/app/__pycache__/
+chat_barber/app/__pycache__/
+chat_user_barber/app/__pycache__/
+ai_router/app/__pycache__/
+embedding/app/__pycache__/
+faiss_service/app/__pycache__/
+
+# Test coverage
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+tmp/
+
+# Media files (if not needed in repo)
+*.mp3
+*.mp4
+*.wav
+*.avi
+*.mov
+
+# Run_embedding_service.py
+run_embedding_service.py

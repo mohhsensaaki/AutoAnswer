@@ -1,0 +1,19 @@
+# Environment Configuration Template for Content Splitter Service
+# Copy this file to .env and update the values as needed
+
+# Milvus Database Configuration (for saving split documents)
+MILVUS_URI=http://localhost:19530/
+COLLECTION_NAME=documents
+
+# Vector Configuration
+TEXT_EMBEDDING_DIMENSION=1536
+
+# Splitter Service Configuration
+DOWNLOAD_TIMEOUT=30
+MAX_CONTENT_SIZE=10485760  # 10MB in bytes
+DEFAULT_CHUNK_SIZE=1000
+DEFAULT_CHUNK_OVERLAP=200
+
+# Logging Configuration
+IS_PRODUCTION=no
+LOG_URL=. 
