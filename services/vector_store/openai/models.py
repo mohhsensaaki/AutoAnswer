@@ -24,8 +24,8 @@ class FileInfo(BaseModel):
 
 class SyncFilesResponse(BaseModel):
     vector_store_id: str
-    synced_documents: List[str]
-    uploaded_file_ids: List[str]
+    inserted_docs: List[str]
+    deleted_docs: List[str]
 
 class VectorStoreInfoResponse(BaseModel):
     vector_store_id: str

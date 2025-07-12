@@ -2,7 +2,7 @@ import os
 
 import aiofiles
 import httpx
-from typing import List, Optional
+import tempfile
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
 from mimetypes import guess_extension
@@ -96,57 +96,52 @@ class VectorStoreService:
 
         # Get or create the vector store
         vector_store_id = await self.get_or_create_vector_store_id(workspace_id)
-        uploaded_file_ids = []
-
-        for i, doc in enumerate(request.documents):
-            self.logger.debug(f"Processing document {i+1}/{len(request.documents)}: {doc.id}")
-            
+        
+        # Get current documents filenames
+        current_doc_filenames = set()
+        current_doc_mime_types = dict()
+        for doc in request.documents:
             file_name = doc.id + guess_extension(doc.mimeType.strip())
-            file_path = os.path.join(self.files_dir, file_name)
+            current_doc_filenames.add(file_name)
+            current_doc_mime_types[file_name] = doc.mimeType
+        
+        self.logger.info(f"Current document filenames: {current_doc_filenames}")
+        
+        # Get existing files in vector store using get_workspace_files
+        existing_files = {}  # filename -> file_id mapping
+        try:
+            workspace_files_response = await self.get_workspace_files(workspace_id)
+            for file_info in workspace_files_response.files:
+                existing_files[file_info.filename] = file_info.file_id
+        except Exception as e:
+            self.logger.error(f"Failed to get existing files: {str(e)}")
+            existing_files = {}
+        
+        self.logger.info(f"Existing files in vector store: {list(existing_files.keys())}")
+        
+        # Find files to add and remove
+        files_to_add = current_doc_filenames - set(existing_files.keys())
+        files_to_remove = set(existing_files.keys()) - current_doc_filenames
+        
+        self.logger.info(f"Files to add: {files_to_add}")
+        self.logger.info(f"Files to remove: {files_to_remove}")
+        
+        # Remove files that are no longer in the document list
+        removed_file_ids = []
+        for filename in files_to_remove:
+            file_id = existing_files[filename]
+            await self.delete_file(workspace_id,file_id)
+            self.logger.info(f"Successfully removed file: {filename}")
+        for filename in files_to_add:
+            mime_type = current_doc_mime_types[filename]
+            await self.download_and_insert_file(workspace_id,filename.split(".")[0],request.media_download_url_pattern,CHANNEL_MANAGER_API_KEY,mime_type)
+            self.logger.info(f"Successfully inserted file: {filename}")
 
-            # Download file if it doesn't exist locally
-            if not os.path.exists(file_path):
-                try:
-                    await self.download_file(
-                        doc.id,
-                        request.media_download_url_pattern,
-                        request.bearer_token or CHANNEL_MANAGER_API_KEY,
-                        file_path
-                    )
-                except Exception as e:
-                    self.logger.error(f"Failed to download file {doc.id}: {str(e)}")
-                    print(f"Failed to download file {doc.id}: {str(e)}")
-                    continue
-
-            # Upload the file to OpenAI
-            try:
-                async with aiofiles.open(file_path, "rb") as af:
-                    content = await af.read()
-                
-                self.logger.debug(f"Uploading file to OpenAI: {file_name}")
-                up = await self.client.files.create(
-                    file=(file_name, content), 
-                    purpose="assistants"
-                )
-
-                # Attach the file to the vector store
-                await self.client.vector_stores.files.create(
-                    vector_store_id=vector_store_id,
-                    file_id=up.id
-                )
-
-                uploaded_file_ids.append(up.id)
-                self.logger.info(f"Successfully uploaded file: {file_name} (ID: {up.id})")
-            except Exception as e:
-                self.logger.error(f"Failed to upload file {file_name}: {str(e)}")
-                print(f"Failed to upload file {file_name}: {str(e)}")
-                continue
-
-        self.logger.info(f"File sync completed for workspace {workspace_id}: {len(uploaded_file_ids)} files uploaded")
+        self.logger.info(f"File sync completed for workspace {workspace_id}: {len(files_to_add)} files uploaded, {len(files_to_remove)} files removed")
         return SyncFilesResponse(
             vector_store_id=vector_store_id,
-            synced_documents=[doc.id for doc in request.documents],
-            uploaded_file_ids=uploaded_file_ids
+            deleted_docs=files_to_remove,
+            inserted_docs=files_to_add
         )
 
     async def get_vector_store_info(self, workspace_id: str) -> VectorStoreInfoResponse:
@@ -271,7 +266,7 @@ class VectorStoreService:
         self.logger.info(f"Starting file insertion: workspace_id={workspace_id}, file_name={file_name}")
         
         vector_store_id = await self.get_or_create_vector_store_id(workspace_id)
-        
+        is_uploaded = False
         try:
             # Upload file to OpenAI
             self.logger.debug(f"Uploading file to OpenAI: {file_name}")
@@ -286,7 +281,7 @@ class VectorStoreService:
                 vector_store_id=vector_store_id,
                 file_id=up.id
             )
-            
+            is_uploaded = True
             self.logger.info(f"Successfully inserted file: {file_name} (ID: {up.id})")
             return FileOperationResponse(
                 vector_store_id=vector_store_id,
@@ -294,9 +289,52 @@ class VectorStoreService:
                 file_name=file_name,
                 status="uploaded"
             )
+            
         except Exception as e:
             self.logger.error(f"Failed to insert file {file_name}: {str(e)}")
-            raise ValueError(f"Failed to insert file: {str(e)}")
+            if is_uploaded:
+                await self.delete_file(workspace_id, up.id)
+    async def download_and_insert_file(self, workspace_id: str, media_id: str, download_url_pattern: str, bearer_token: str, mime_type: str) -> FileOperationResponse:
+        """Download a file to temp folder, insert it to OpenAI, then clean up."""
+        self.logger.info(f"Starting download and insert: workspace_id={workspace_id}, media_id={media_id}")
+        
+        file_name = media_id + guess_extension(mime_type.strip())
+        temp_file_path = None
+        
+        try:
+            # Create temporary file
+            with tempfile.NamedTemporaryFile(delete=False, suffix=guess_extension(mime_type.strip())) as temp_file:
+                temp_file_path = temp_file.name
+                self.logger.debug(f"Created temporary file: {temp_file_path}")
+            
+            # Download file to temporary location
+            self.logger.debug(f"Downloading file to temp location: {temp_file_path}")
+            await self.download_file(media_id, download_url_pattern, bearer_token, temp_file_path)
+            
+            # Read file content
+            #TODO: in memory file reading
+            async with aiofiles.open(temp_file_path, "rb") as af:
+                file_content = await af.read()
+            
+            # Insert file to OpenAI
+            self.logger.debug(f"Inserting file to OpenAI: {file_name}")
+            result = await self.insert_file(workspace_id, file_content, file_name)
+            
+            self.logger.info(f"Successfully downloaded and inserted file: {file_name}")
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"Failed to download and insert file {media_id}: {str(e)}")
+            raise ValueError(f"Failed to download and insert file: {str(e)}")
+        
+        finally:
+            # Clean up temporary file
+            if temp_file_path and os.path.exists(temp_file_path):
+                try:
+                    os.unlink(temp_file_path)
+                    self.logger.debug(f"Cleaned up temporary file: {temp_file_path}")
+                except Exception as e:
+                    self.logger.warning(f"Failed to clean up temporary file {temp_file_path}: {str(e)}")
 
     async def get_vector_store_status_by_workspace(self, workspace_id: str) -> VectorStoreStatusResponse:
         """Get the status of a vector store by workspace ID."""
@@ -385,14 +423,14 @@ class VectorStoreService:
             raise ValueError("No vector store for this workspace")
         
         try:
-            # Find the file by name in the vector store
+            # Find the file by name using get_workspace_files
             self.logger.debug(f"Searching for file by name: {file_name}")
+            workspace_files_response = await self.get_workspace_files(workspace_id)
+            
             file_id = None
-            async for file in self.client.vector_stores.files.list(vector_store_id=vector_store_id):
-                # Get file details to compare name
-                file_details = await self.client.files.retrieve(file.id)
-                if file_details.filename == file_name:
-                    file_id = file.id
+            for file_info in workspace_files_response.files:
+                if file_info.filename == file_name:
+                    file_id = file_info.file_id
                     self.logger.debug(f"Found file {file_name} with ID: {file_id}")
                     break
             

@@ -38,7 +38,7 @@ async def sync_file_background(request: SyncRequest):
     """Background task for syncing files."""
     try:
         result = await vector_store_service.sync_files(request)
-        return JSONResponse(result)
+        #return JSONResponse(result)
     except Exception as e:
         print(f"Background sync failed: {str(e)}")
 
