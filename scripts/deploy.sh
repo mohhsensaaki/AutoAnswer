@@ -27,6 +27,7 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
 echo -e "${BLUE}===================================================================${NC}"
 echo -e "${BLUE}           Deploying $PROJECT_NAME FastAPI Application${NC}"
+echo -e "${BLUE}           Database: aidb | User: admin${NC}"
 echo -e "${BLUE}===================================================================${NC}"
 
 # Function to print colored output
@@ -127,22 +128,20 @@ fi
 
 # Step 2: Get database credentials from user
 print_status "Database Configuration Required"
-echo "Please provide PostgreSQL database credentials:"
+echo "Setting up 'aidb' database with username 'admin'"
 
-# Get database credentials
-read -p "Enter PostgreSQL host (default: localhost): " DB_HOST
-DB_HOST=${DB_HOST:-localhost}
+# Set database credentials
+DB_HOST="localhost"
+DB_PORT="5432"
+DB_USERNAME="admin"
+DB_NAME="aidb"
 
-read -p "Enter PostgreSQL port (default: 5432): " DB_PORT
-DB_PORT=${DB_PORT:-5432}
+print_status "Database Host: $DB_HOST"
+print_status "Database Port: $DB_PORT"
+print_status "Database Name: $DB_NAME"
+print_status "Database Username: $DB_USERNAME"
 
-read -p "Enter database username for 'ai' database: " DB_USERNAME
-if [[ -z "$DB_USERNAME" ]]; then
-    print_error "Database username is required!"
-    exit 1
-fi
-
-read -s -p "Enter database password: " DB_PASSWORD
+read -s -p "Enter password for database user 'admin': " DB_PASSWORD
 echo
 if [[ -z "$DB_PASSWORD" ]]; then
     print_error "Database password is required!"
@@ -167,22 +166,26 @@ print_status "Creating database user '$DB_USERNAME'..."
 psql -h "$DB_HOST" -p "$DB_PORT" -U "$POSTGRES_USER" -d postgres -c "CREATE USER $DB_USERNAME WITH PASSWORD '$DB_PASSWORD';" 2>/dev/null || true
 
 # Create database
-print_status "Creating database 'ai'..."
-psql -h "$DB_HOST" -p "$DB_PORT" -U "$POSTGRES_USER" -d postgres -c "CREATE DATABASE ai OWNER $DB_USERNAME;" 2>/dev/null || true
+print_status "Creating database 'aidb'..."
+psql -h "$DB_HOST" -p "$DB_PORT" -U "$POSTGRES_USER" -d postgres -c "CREATE DATABASE aidb OWNER $DB_USERNAME;" 2>/dev/null || true
 
 # Grant privileges
 print_status "Granting privileges..."
-psql -h "$DB_HOST" -p "$DB_PORT" -U "$POSTGRES_USER" -d postgres -c "GRANT ALL PRIVILEGES ON DATABASE ai TO $DB_USERNAME;" 2>/dev/null || true
+psql -h "$DB_HOST" -p "$DB_PORT" -U "$POSTGRES_USER" -d postgres -c "GRANT ALL PRIVILEGES ON DATABASE aidb TO $DB_USERNAME;" 2>/dev/null || true
 
 # Clear password from environment
 unset PGPASSWORD
 
 print_status "Database setup completed ✓"
 
+# Make scripts executable
+chmod +x "$PROJECT_DIR/scripts/deploy.sh" 2>/dev/null || true
+chmod +x "$PROJECT_DIR/scripts/stop.sh" 2>/dev/null || true
+
 # Test connection
 print_status "Testing database connection..."
 export PGPASSWORD="$DB_PASSWORD"
-if psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USERNAME" -d ai -c "SELECT 1;" >/dev/null 2>&1; then
+if psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USERNAME" -d aidb -c "SELECT 1;" >/dev/null 2>&1; then
     print_status "Database connection test successful ✓"
 else
     print_warning "Database connection test failed, but continuing with deployment..."
@@ -195,7 +198,7 @@ cat > "$PROJECT_DIR/.env" << EOF
 # Database Configuration
 DB_HOST=$DB_HOST
 DB_PORT=$DB_PORT
-DB_NAME=ai
+DB_NAME=$DB_NAME
 DB_USER=$DB_USERNAME
 DB_PASSWORD=$DB_PASSWORD
 
@@ -206,12 +209,44 @@ EOF
 
 print_status ".env file created ✓"
 
-# Step 5: Check if Python is installed
+# Step 5: Install Python if not available
 print_status "Checking Python installation..."
 if ! command_exists python3; then
-    print_error "Python 3 is not installed. Please install Python 3.8 or higher."
-    print_error "Visit https://www.python.org/downloads/ to download Python."
-    exit 1
+    print_status "Python 3 not found. Installing Python..."
+    
+    # Detect OS and install Python
+    if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+        # Linux
+        if command_exists apt-get; then
+            # Ubuntu/Debian
+            sudo apt-get update
+            sudo apt-get install -y python3 python3-pip python3-venv
+        elif command_exists yum; then
+            # CentOS/RHEL
+            sudo yum install -y python3 python3-pip
+        elif command_exists dnf; then
+            # Fedora
+            sudo dnf install -y python3 python3-pip
+        else
+            print_error "Unsupported Linux distribution. Please install Python 3.8+ manually."
+            exit 1
+        fi
+    elif [[ "$OSTYPE" == "darwin"* ]]; then
+        # macOS
+        if command_exists brew; then
+            brew install python3
+        else
+            print_error "Homebrew not found. Please install Python 3.8+ manually."
+            exit 1
+        fi
+    else
+        print_error "Unsupported operating system. Please install Python 3.8+ manually."
+        exit 1
+    fi
+    
+    print_status "Python installation completed ✓"
+else
+    print_status "Python 3 found ✓"
 fi
 
 # Check Python version
@@ -230,8 +265,15 @@ print_status "Python version check passed ✓"
 # Step 6: Check if pip is installed
 print_status "Checking pip installation..."
 if ! command_exists pip3; then
-    print_error "pip3 is not installed. Please install pip3."
-    exit 1
+    print_status "pip3 not found. Installing pip..."
+    if command_exists python3; then
+        # Try to install pip using python3
+        curl -sS https://bootstrap.pypa.io/get-pip.py | python3 - --user
+        export PATH="$HOME/.local/bin:$PATH"
+    else
+        print_error "pip3 is not installed and cannot be installed automatically."
+        exit 1
+    fi
 fi
 print_status "pip3 is available ✓"
 
@@ -277,16 +319,20 @@ if sudo -n true 2>/dev/null; then
     sudo tee "$SERVICE_FILE" > /dev/null <<EOF
 [Unit]
 Description=$PROJECT_NAME FastAPI Application
-After=network.target
+After=network.target postgresql.service
+Wants=postgresql.service
 
 [Service]
 Type=simple
 User=$SERVICE_USER
 WorkingDirectory=$PROJECT_DIR
 Environment=PATH=$PROJECT_DIR/$VENV_NAME/bin
-ExecStart=$PROJECT_DIR/$VENV_NAME/bin/python main.py
+EnvironmentFile=$PROJECT_DIR/.env
+ExecStart=$PROJECT_DIR/$VENV_NAME/bin/python $PROJECT_DIR/main.py
 Restart=always
 RestartSec=10
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
@@ -303,13 +349,18 @@ EOF
     print_status "Starting $SERVICE_NAME service..."
     sudo systemctl start "$SERVICE_NAME"
     
+    # Wait a moment for the service to start
+    sleep 5
+    
     # Check service status
     if sudo systemctl is-active --quiet "$SERVICE_NAME"; then
         print_status "Service is running ✓"
         print_status "Service status:"
-        sudo systemctl status "$SERVICE_NAME" --no-pager
+        sudo systemctl status "$SERVICE_NAME" --no-pager -l
     else
         print_error "Service failed to start!"
+        print_error "Service logs:"
+        sudo journalctl -u "$SERVICE_NAME" --no-pager -n 20
         print_error "Check logs with: sudo journalctl -u $SERVICE_NAME -f"
         exit 1
     fi
@@ -344,12 +395,24 @@ else
     
     # Run the application directly
     print_status "Starting application on port $SERVICE_PORT..."
+    cd "$PROJECT_DIR"
+    source "$VENV_NAME/bin/activate"
     nohup python main.py > app.log 2>&1 &
     APP_PID=$!
     echo $APP_PID > app.pid
     print_status "Application started with PID: $APP_PID"
     print_status "Logs are being written to app.log"
     print_status "To stop the application, run: kill $APP_PID"
+    
+    # Wait a moment and check if the process is still running
+    sleep 3
+    if ps -p "$APP_PID" > /dev/null 2>&1; then
+        print_status "Application is running successfully ✓"
+    else
+        print_error "Application failed to start!"
+        print_error "Check app.log for details"
+        exit 1
+    fi
 fi
 
 # Step 13: Display useful information
@@ -365,6 +428,12 @@ echo "  • Application URL: http://localhost:$SERVICE_PORT"
 echo "  • Health Check: http://localhost:$SERVICE_PORT/health"
 echo "  • API Documentation: http://localhost:$SERVICE_PORT/docs"
 echo ""
+print_status "Database Information:"
+echo "  • Database Name: $DB_NAME"
+echo "  • Database User: $DB_USERNAME"
+echo "  • Database Host: $DB_HOST:$DB_PORT"
+echo "  • Configuration: $PROJECT_DIR/.env"
+echo ""
 print_status "Service Management Commands:"
 echo "  • Start service: sudo systemctl start $SERVICE_NAME"
 echo "  • Stop service: sudo systemctl stop $SERVICE_NAME"
@@ -372,7 +441,8 @@ echo "  • Restart service: sudo systemctl restart $SERVICE_NAME"
 echo "  • Check status: sudo systemctl status $SERVICE_NAME"
 echo "  • View logs: sudo journalctl -u $SERVICE_NAME -f"
 echo ""
-print_status "To test the API, try:"
-echo "  curl http://localhost:$SERVICE_PORT/health"
+print_status "To test the deployment:"
+echo "  • API Health: curl http://localhost:$SERVICE_PORT/health"
+echo "  • Database Test: python3 scripts/database_example.py"
 echo ""
 echo -e "${GREEN}Happy coding! 🚀${NC}" 

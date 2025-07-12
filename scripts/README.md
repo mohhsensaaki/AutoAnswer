@@ -54,8 +54,8 @@ This directory contains deployment scripts for the NewAfzzinaAI FastAPI applicat
 ### 1. **PostgreSQL Installation & Setup**
 - 🗄️ Install PostgreSQL if not already installed
 - 🗄️ Start PostgreSQL service
-- 🗄️ Create database named 'ai'
-- 🗄️ Create database user with provided credentials
+- 🗄️ Create database named 'aidb'
+- 🗄️ Create database user 'admin' with provided password
 - 🗄️ Test database connection
 - 🗄️ Generate .env file with database configuration
 
@@ -226,8 +226,8 @@ kill -9 <PID>
 If the database or user already exists, the script will continue without error. To recreate:
 ```sql
 -- As PostgreSQL superuser
-DROP DATABASE IF EXISTS ai;
-DROP USER IF EXISTS your_username;
+DROP DATABASE IF EXISTS aidb;
+DROP USER IF EXISTS admin;
 -- Then run the deployment script again
 ```
 
@@ -268,16 +268,15 @@ NewAfzzinaAI/
 
 The deployment script will automatically:
 1. Install PostgreSQL if not already installed
-2. Prompt for database credentials during setup
-3. Create the 'ai' database
-4. Create a database user with the specified credentials
+2. Install Python 3 and pip if not already installed
+3. Create the 'aidb' database
+4. Create database user 'admin' with your specified password
 5. Generate a `.env` file with the database configuration
 
 ### Database Credentials Required
 
 During deployment, you'll be prompted for:
-- **Database username**: Username for the 'ai' database
-- **Database password**: Password for the database user
+- **Database password**: Password for the 'admin' user (username is automatically set to 'admin')
 - **PostgreSQL superuser credentials**: Required to create the database and user
 
 ### Database Connection Details
@@ -287,8 +286,8 @@ After deployment, the following `.env` file will be created:
 # Database Configuration
 DB_HOST=localhost
 DB_PORT=5432
-DB_NAME=ai
-DB_USER=your_username
+DB_NAME=aidb
+DB_USER=admin
 DB_PASSWORD=your_password
 
 # Application Configuration
@@ -301,8 +300,8 @@ LOG_URL=.
 The application supports the following environment variables:
 - `DB_HOST`: PostgreSQL host (default: localhost)
 - `DB_PORT`: PostgreSQL port (default: 5432)
-- `DB_NAME`: Database name (set to 'ai')
-- `DB_USER`: Database username
+- `DB_NAME`: Database name (set to 'aidb')
+- `DB_USER`: Database username (set to 'admin')
 - `DB_PASSWORD`: Database password
 - `IS_PRODUCTION`: Set to "yes" for production logging
 - `LOG_URL`: Directory for log files (default: current directory)

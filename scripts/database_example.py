@@ -5,6 +5,11 @@ Database Connection Example for NewAfzzinaAI
 This example demonstrates how to connect to the PostgreSQL database
 using the environment variables created by the deployment script.
 
+Database Configuration:
+- Database Name: aidb
+- Database User: admin
+- Password: Set during deployment
+
 Requirements:
 - psycopg2 (already in requirements.txt)
 - python-dotenv (already in requirements.txt)
@@ -29,7 +34,7 @@ def get_db_connection():
         connection = psycopg2.connect(
             host=os.getenv('DB_HOST', 'localhost'),
             port=os.getenv('DB_PORT', '5432'),
-            database=os.getenv('DB_NAME', 'ai'),
+            database=os.getenv('DB_NAME', 'aidb'),
             user=os.getenv('DB_USER'),
             password=os.getenv('DB_PASSWORD')
         )
