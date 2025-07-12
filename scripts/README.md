@@ -51,26 +51,34 @@ This directory contains deployment scripts for the NewAfzzinaAI FastAPI applicat
 
 ## What the Deployment Scripts Do
 
-### 1. **Environment Checks**
+### 1. **PostgreSQL Installation & Setup**
+- 🗄️ Install PostgreSQL if not already installed
+- 🗄️ Start PostgreSQL service
+- 🗄️ Create database named 'ai'
+- 🗄️ Create database user with provided credentials
+- 🗄️ Test database connection
+- 🗄️ Generate .env file with database configuration
+
+### 2. **Environment Checks**
 - ✅ Verify Python 3.8+ is installed
 - ✅ Verify pip is available
 - ✅ Check system compatibility
 
-### 2. **Virtual Environment Setup**
+### 3. **Virtual Environment Setup**
 - 🔧 Create virtual environment (`env/`)
 - 🔧 Activate virtual environment
 - 🔧 Upgrade pip to latest version
 
-### 3. **Dependency Installation**
+### 4. **Dependency Installation**
 - 📦 Install all requirements from `requirements.txt`
-- 📦 Ensure all dependencies are compatible
+- 📦 Ensure all dependencies are compatible (including PostgreSQL adapter)
 
-### 4. **Service Setup**
+### 5. **Service Setup**
 - 🚀 **Linux**: Create systemd service
 - 🚀 **Windows**: Create Windows service (with NSSM)
 - 🚀 **Alternative**: Run directly if service setup fails
 
-### 5. **Application Startup**
+### 6. **Application Startup**
 - ▶️ Start the FastAPI application
 - ▶️ Verify application is running
 - ▶️ Display useful information and endpoints
@@ -124,6 +132,24 @@ sudo journalctl -u newafzzinaai -f
 
 ## Testing the Deployment
 
+### Test Database Connection
+After deployment, you can test the database connection:
+
+```bash
+# Windows
+python scripts/database_example.py
+
+# Linux/Unix
+python3 scripts/database_example.py
+```
+
+This script will:
+- Test the database connection using the .env file
+- Create sample tables for an AI application
+- Verify all database operations work correctly
+
+### Test FastAPI Application
+
 ### Windows PowerShell
 ```powershell
 # Test health endpoint
@@ -171,6 +197,40 @@ netstat -an | grep :8000
 kill -9 <PID>
 ```
 
+### PostgreSQL-Specific Issues
+
+#### PostgreSQL Installation Failed
+- **Windows**: If winget fails, download PostgreSQL from https://www.postgresql.org/download/windows/
+- **Linux**: Use your distribution's package manager (apt, yum, dnf)
+- **macOS**: Install via Homebrew: `brew install postgresql`
+
+#### Database Connection Failed
+1. Verify PostgreSQL service is running:
+   - **Windows**: Check Services.msc for "PostgreSQL" service
+   - **Linux**: `sudo systemctl status postgresql`
+   - **macOS**: `brew services list | grep postgres`
+
+2. Check PostgreSQL logs:
+   - **Windows**: Check Event Viewer or PostgreSQL log files
+   - **Linux**: `sudo journalctl -u postgresql`
+   - **macOS**: `tail -f /usr/local/var/log/postgres.log`
+
+3. Verify credentials and permissions:
+   ```sql
+   -- Connect as superuser and check
+   \du  -- List database users
+   \l   -- List databases
+   ```
+
+#### Database Already Exists
+If the database or user already exists, the script will continue without error. To recreate:
+```sql
+-- As PostgreSQL superuser
+DROP DATABASE IF EXISTS ai;
+DROP USER IF EXISTS your_username;
+-- Then run the deployment script again
+```
+
 ### Windows-Specific Issues
 
 #### NSSM Not Found
@@ -195,16 +255,55 @@ NewAfzzinaAI/
 │   ├── deploy.ps1         # Windows deployment script
 │   ├── stop.sh            # Linux stop script
 │   ├── stop.ps1           # Windows stop script
+│   ├── database_example.py # Database connection example
 │   └── README.md          # This file
 ├── main.py                # FastAPI application
 ├── requirements.txt       # Python dependencies
+├── .env                   # Environment variables (created by deploy script)
 ├── run_app.bat           # Windows batch file (created by deploy.ps1)
 └── app.log               # Application logs (if running directly)
+```
+
+## Database Configuration
+
+The deployment script will automatically:
+1. Install PostgreSQL if not already installed
+2. Prompt for database credentials during setup
+3. Create the 'ai' database
+4. Create a database user with the specified credentials
+5. Generate a `.env` file with the database configuration
+
+### Database Credentials Required
+
+During deployment, you'll be prompted for:
+- **Database username**: Username for the 'ai' database
+- **Database password**: Password for the database user
+- **PostgreSQL superuser credentials**: Required to create the database and user
+
+### Database Connection Details
+
+After deployment, the following `.env` file will be created:
+```env
+# Database Configuration
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=ai
+DB_USER=your_username
+DB_PASSWORD=your_password
+
+# Application Configuration
+IS_PRODUCTION=no
+LOG_URL=.
 ```
 
 ## Environment Variables
 
 The application supports the following environment variables:
+- `DB_HOST`: PostgreSQL host (default: localhost)
+- `DB_PORT`: PostgreSQL port (default: 5432)
+- `DB_NAME`: Database name (set to 'ai')
+- `DB_USER`: Database username
+- `DB_PASSWORD`: Database password
 - `IS_PRODUCTION`: Set to "yes" for production logging
 - `LOG_URL`: Directory for log files (default: current directory)
 

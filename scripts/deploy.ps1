@@ -98,7 +98,161 @@ Write-Host "           Deploying $ProjectName FastAPI Application" -ForegroundCo
 Write-Host "==================================================================" -ForegroundColor $Blue
 Write-Host ""
 
-# Step 1: Check if Python is installed
+# Step 1: Install and Configure PostgreSQL
+Write-Status "Checking PostgreSQL installation..."
+$postgresInstalled = $false
+try {
+    $postgresService = Get-Service -Name "postgresql*" -ErrorAction SilentlyContinue
+    if ($postgresService) {
+        Write-Status "PostgreSQL service found ✓"
+        $postgresInstalled = $true
+    } else {
+        # Check if psql command is available
+        $psqlPath = Get-Command "psql" -ErrorAction SilentlyContinue
+        if ($psqlPath) {
+            Write-Status "PostgreSQL client found ✓"
+            $postgresInstalled = $true
+        }
+    }
+} catch {
+    $postgresInstalled = $false
+}
+
+if (-not $postgresInstalled) {
+    Write-Status "PostgreSQL not found. Installing PostgreSQL..."
+    
+    # Check if we have winget
+    if (Get-Command "winget" -ErrorAction SilentlyContinue) {
+        Write-Status "Installing PostgreSQL via winget..."
+        try {
+            winget install --id PostgreSQL.PostgreSQL --silent --accept-source-agreements --accept-package-agreements
+            Write-Status "PostgreSQL installation completed ✓"
+            
+            # Wait for installation to complete
+            Start-Sleep -Seconds 30
+            
+            # Add PostgreSQL to PATH
+            $postgresPath = "C:\Program Files\PostgreSQL\*\bin"
+            $existingPath = [Environment]::GetEnvironmentVariable("PATH", "User")
+            if ($existingPath -notlike "*PostgreSQL*") {
+                $newPath = "$existingPath;$postgresPath"
+                [Environment]::SetEnvironmentVariable("PATH", $newPath, "User")
+                Write-Status "PostgreSQL added to PATH ✓"
+            }
+            
+            # Refresh PATH for current session
+            $env:PATH = "$env:PATH;C:\Program Files\PostgreSQL\16\bin;C:\Program Files\PostgreSQL\15\bin;C:\Program Files\PostgreSQL\14\bin"
+            
+        } catch {
+            Write-Error "Failed to install PostgreSQL via winget: $_"
+            Write-Error "Please install PostgreSQL manually from https://www.postgresql.org/download/windows/"
+            exit 1
+        }
+    } else {
+        Write-Error "winget not available. Please install PostgreSQL manually from:"
+        Write-Error "https://www.postgresql.org/download/windows/"
+        exit 1
+    }
+}
+
+# Step 2: Get database credentials from user
+Write-Host ""
+Write-Status "Database Configuration Required"
+Write-Host "Please provide PostgreSQL database credentials:" -ForegroundColor $Yellow
+
+# Get database credentials
+$dbHost = Read-Host "Enter PostgreSQL host (default: localhost)"
+if (-not $dbHost) { $dbHost = "localhost" }
+
+$dbPort = Read-Host "Enter PostgreSQL port (default: 5432)"
+if (-not $dbPort) { $dbPort = "5432" }
+
+$dbUsername = Read-Host "Enter database username for 'ai' database"
+if (-not $dbUsername) {
+    Write-Error "Database username is required!"
+    exit 1
+}
+
+$dbPassword = Read-Host "Enter database password" -AsSecureString
+$dbPasswordPlain = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($dbPassword))
+if (-not $dbPasswordPlain) {
+    Write-Error "Database password is required!"
+    exit 1
+}
+
+# Get PostgreSQL superuser credentials for database creation
+Write-Host ""
+Write-Status "PostgreSQL superuser credentials needed to create database and user"
+$postgresUser = Read-Host "Enter PostgreSQL superuser username (default: postgres)"
+if (-not $postgresUser) { $postgresUser = "postgres" }
+
+$postgresPassword = Read-Host "Enter PostgreSQL superuser password" -AsSecureString
+$postgresPasswordPlain = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($postgresPassword))
+
+# Step 3: Create database and user
+Write-Status "Creating database and user..."
+try {
+    # Create SQL commands
+    $createUserSQL = "CREATE USER $dbUsername WITH PASSWORD '$dbPasswordPlain';"
+    $createDBSQL = "CREATE DATABASE ai OWNER $dbUsername;"
+    $grantPrivilegesSQL = "GRANT ALL PRIVILEGES ON DATABASE ai TO $dbUsername;"
+    
+    # Set PGPASSWORD environment variable
+    $env:PGPASSWORD = $postgresPasswordPlain
+    
+    # Execute SQL commands
+    Write-Status "Creating database user '$dbUsername'..."
+    $createUserResult = & psql -h $dbHost -p $dbPort -U $postgresUser -d postgres -c $createUserSQL 2>&1
+    
+    Write-Status "Creating database 'ai'..."
+    $createDBResult = & psql -h $dbHost -p $dbPort -U $postgresUser -d postgres -c $createDBSQL 2>&1
+    
+    Write-Status "Granting privileges..."
+    $grantResult = & psql -h $dbHost -p $dbPort -U $postgresUser -d postgres -c $grantPrivilegesSQL 2>&1
+    
+    # Clear password from environment
+    $env:PGPASSWORD = $null
+    
+    Write-Status "Database setup completed ✓"
+    
+    # Test connection
+    Write-Status "Testing database connection..."
+    $env:PGPASSWORD = $dbPasswordPlain
+    $testResult = & psql -h $dbHost -p $dbPort -U $dbUsername -d ai -c "SELECT 1;" 2>&1
+    $env:PGPASSWORD = $null
+    
+    if ($LASTEXITCODE -eq 0) {
+        Write-Status "Database connection test successful ✓"
+    } else {
+        Write-Warning "Database connection test failed, but continuing with deployment..."
+    }
+    
+} catch {
+    Write-Error "Failed to create database or user: $_"
+    Write-Error "Please create the database manually or check PostgreSQL installation."
+    exit 1
+}
+
+# Step 4: Create .env file with database configuration
+Write-Status "Creating .env file with database configuration..."
+$envContent = @"
+# Database Configuration
+DB_HOST=$dbHost
+DB_PORT=$dbPort
+DB_NAME=ai
+DB_USER=$dbUsername
+DB_PASSWORD=$dbPasswordPlain
+
+# Application Configuration
+IS_PRODUCTION=no
+LOG_URL=.
+"@
+
+$envFile = Join-Path $ProjectDir ".env"
+$envContent | Out-File -FilePath $envFile -Encoding UTF8
+Write-Status ".env file created ✓"
+
+# Step 5: Check if Python is installed
 Write-Status "Checking Python installation..."
 try {
     $pythonVersion = (python --version 2>&1) -replace "Python ", ""
@@ -117,7 +271,7 @@ try {
     exit 1
 }
 
-# Step 2: Check if pip is installed
+# Step 6: Check if pip is installed
 Write-Status "Checking pip installation..."
 try {
     $pipVersion = python -m pip --version
@@ -127,11 +281,11 @@ try {
     exit 1
 }
 
-# Step 3: Navigate to project directory
+# Step 7: Navigate to project directory
 Write-Status "Navigating to project directory: $ProjectDir"
 Set-Location $ProjectDir
 
-# Step 4: Create virtual environment
+# Step 8: Create virtual environment
 Write-Status "Setting up virtual environment..."
 if (-not (Test-Path $VenvName)) {
     Write-Status "Creating virtual environment '$VenvName'..."
@@ -141,7 +295,7 @@ if (-not (Test-Path $VenvName)) {
     Write-Warning "Virtual environment '$VenvName' already exists. Skipping creation."
 }
 
-# Step 5: Activate virtual environment
+# Step 9: Activate virtual environment
 Write-Status "Activating virtual environment..."
 $activateScript = Join-Path $VenvName "Scripts\Activate.ps1"
 if (Test-Path $activateScript) {
@@ -152,11 +306,11 @@ if (Test-Path $activateScript) {
     exit 1
 }
 
-# Step 6: Upgrade pip
+# Step 10: Upgrade pip
 Write-Status "Upgrading pip..."
 python -m pip install --upgrade pip
 
-# Step 7: Install dependencies
+# Step 11: Install dependencies
 Write-Status "Installing dependencies from requirements.txt..."
 if (Test-Path "requirements.txt") {
     python -m pip install -r requirements.txt
@@ -166,7 +320,7 @@ if (Test-Path "requirements.txt") {
     exit 1
 }
 
-# Step 8: Setup as service or run directly
+# Step 12: Setup as service or run directly
 if ($AsService) {
     if (-not (Test-Administrator)) {
         Write-Error "Administrator privileges required to create Windows service."
@@ -248,7 +402,7 @@ pause
     Write-Status "Application started! Check if it's running on http://localhost:$ServicePort"
 }
 
-# Step 9: Display useful information
+# Step 13: Display useful information
 Write-Host ""
 Write-Host "==================================================================" -ForegroundColor $Blue
 Write-Host "                    Deployment Complete!" -ForegroundColor $Green
