@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from services.common.log_creator import create_logger
 from services.vector_store.openai.vector_store_router import openai_vector_store_router
+from services.vector_store.openai.db import init_db as openai_vector_store_db_init
 #from config import settings
 
 logger = create_logger(is_production=os.getenv("IS_PRODUCTION", "no"), log_url=os.getenv("LOG_URL", "."))
@@ -20,7 +21,7 @@ async def lifespan(app: FastAPI):
     Application lifespan manager for startup and shutdown events.
     """
     logger.info("Starting up chatbot platform...")
-    
+    openai_vector_store_db_init()
     # Initialize core services here
     # await initialize_vector_db()
     # await initialize_llm_engine()
