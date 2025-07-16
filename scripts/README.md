@@ -267,17 +267,18 @@ NewAfzzinaAI/
 ## Database Configuration
 
 The deployment script will automatically:
-1. Install PostgreSQL if not already installed
-2. Install Python 3 and pip if not already installed
-3. Create the 'aidb' database
-4. Create database user 'admin' with your specified password
-5. Generate a `.env` file with the database configuration
+1. Collect environment variables (database, OpenAI API keys, etc.)
+2. Generate a `.env` file with complete configuration
+3. Install Python dependencies from requirements.txt
+4. Create and start systemd service for the FastAPI application
 
 ### Database Credentials Required
 
 During deployment, you'll be prompted for:
-- **Database password**: Password for the 'admin' user (username is automatically set to 'admin')
-- **PostgreSQL superuser credentials**: Required to create the database and user
+- **Database configuration**: Host, port, name, username, and password
+- **OpenAI API Key**: Required for vector store operations
+- **Channel Manager API Key**: Required for channel management
+- **Application settings**: Production mode and log directory
 
 ### Database Connection Details
 
@@ -290,6 +291,12 @@ DB_NAME=aidb
 DB_USER=admin
 DB_PASSWORD=your_password
 
+# OpenAI Configuration
+OPENAI_API_KEY=your_openai_api_key
+
+# Channel Manager Configuration
+CHANNEL_MANAGER_API_KEY=your_channel_manager_api_key
+
 # Application Configuration
 IS_PRODUCTION=no
 LOG_URL=.
@@ -300,9 +307,11 @@ LOG_URL=.
 The application supports the following environment variables:
 - `DB_HOST`: PostgreSQL host (default: localhost)
 - `DB_PORT`: PostgreSQL port (default: 5432)
-- `DB_NAME`: Database name (set to 'aidb')
-- `DB_USER`: Database username (set to 'admin')
+- `DB_NAME`: Database name (default: aidb)
+- `DB_USER`: Database username (default: admin)
 - `DB_PASSWORD`: Database password
+- `OPENAI_API_KEY`: OpenAI API key for vector store operations
+- `CHANNEL_MANAGER_API_KEY`: Channel Manager API key
 - `IS_PRODUCTION`: Set to "yes" for production logging
 - `LOG_URL`: Directory for log files (default: current directory)
 

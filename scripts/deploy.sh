@@ -2,6 +2,12 @@
 
 # ==================================================================
 # Deployment Script for NewAfzzinaAI FastAPI Application
+# 
+# This script:
+# 1. Collects environment variables from user (Database, OpenAI, etc.)
+# 2. Creates .env file with configuration
+# 3. Installs requirements in virtual environment
+# 4. Creates and starts systemd service for main.py
 # ==================================================================
 
 set -e  # Exit on any error
@@ -16,7 +22,6 @@ NC='\033[0m' # No Color
 # Configuration
 PROJECT_NAME="NewAfzzinaAI"
 VENV_NAME="env"
-PYTHON_MIN_VERSION="3.13"
 SERVICE_NAME="newafzzinaai"
 SERVICE_USER=$(whoami)
 SERVICE_PORT=8110
@@ -27,7 +32,6 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
 echo -e "${BLUE}===================================================================${NC}"
 echo -e "${BLUE}           Deploying $PROJECT_NAME FastAPI Application${NC}"
-echo -e "${BLUE}           Database: aidb | User: admin${NC}"
 echo -e "${BLUE}===================================================================${NC}"
 
 # Function to print colored output
@@ -48,240 +52,86 @@ command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
-# Function to compare version numbers
-version_compare() {
-    if [[ $1 == $2 ]]; then
-        return 0
-    fi
-    local IFS=.
-    local i ver1=($1) ver2=($2)
-    # fill empty fields in ver1 with zeros
-    for ((i=${#ver1[@]}; i<${#ver2[@]}; i++)); do
-        ver1[i]=0
-    done
-    for ((i=0; i<${#ver1[@]}; i++)); do
-        if [[ -z ${ver2[i]} ]]; then
-            # fill empty fields in ver2 with zeros
-            ver2[i]=0
-        fi
-        if ((10#${ver1[i]} > 10#${ver2[i]})); then
-            return 1
-        fi
-        if ((10#${ver1[i]} < 10#${ver2[i]})); then
-            return 2
-        fi
-    done
-    return 0
-}
+# Step 1: Get environment variables from user
+print_status "Environment Configuration"
+echo "Please provide the following environment variables:"
+echo ""
 
-# Step 1: Install and Configure PostgreSQL
-print_status "Checking PostgreSQL installation..."
-if ! command_exists psql; then
-    print_status "PostgreSQL not found. Installing PostgreSQL..."
-    
-    # Detect OS and install PostgreSQL
-    if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-        # Linux
-        if command_exists apt-get; then
-            # Ubuntu/Debian
-            sudo apt-get update
-            sudo apt-get install -y postgresql postgresql-contrib
-        elif command_exists yum; then
-            # CentOS/RHEL
-            sudo yum install -y postgresql-server postgresql-contrib
-            sudo postgresql-setup initdb
-        elif command_exists dnf; then
-            # Fedora
-            sudo dnf install -y postgresql-server postgresql-contrib
-            sudo postgresql-setup --initdb
-        else
-            print_error "Unsupported Linux distribution. Please install PostgreSQL manually."
-            exit 1
-        fi
-    elif [[ "$OSTYPE" == "darwin"* ]]; then
-        # macOS
-        if command_exists brew; then
-            brew install postgresql
-        else
-            print_error "Homebrew not found. Please install PostgreSQL manually."
-            exit 1
-        fi
-    else
-        print_error "Unsupported operating system. Please install PostgreSQL manually."
-        exit 1
-    fi
-    
-    print_status "PostgreSQL installation completed ✓"
-    
-    # Start PostgreSQL service
-    if command_exists systemctl; then
-        sudo systemctl start postgresql
-        sudo systemctl enable postgresql
-    elif command_exists service; then
-        sudo service postgresql start
-    fi
-    
-    print_status "PostgreSQL service started ✓"
-else
-    print_status "PostgreSQL found ✓"
-fi
+# Database configuration
+read -p "Enter Database Host (default: localhost): " DB_HOST
+DB_HOST=${DB_HOST:-localhost}
 
-# Step 2: Get database credentials from user
-print_status "Database Configuration Required"
-echo "Setting up 'aidb' database with username 'admin'"
+read -p "Enter Database Port (default: 5432): " DB_PORT
+DB_PORT=${DB_PORT:-5432}
 
-# Set database credentials
-DB_HOST="localhost"
-DB_PORT="5432"
-DB_USERNAME="admin"
-DB_NAME="aidb"
+read -p "Enter Database Name (default: aidb): " DB_NAME
+DB_NAME=${DB_NAME:-aidb}
 
-print_status "Database Host: $DB_HOST"
-print_status "Database Port: $DB_PORT"
-print_status "Database Name: $DB_NAME"
-print_status "Database Username: $DB_USERNAME"
+read -p "Enter Database Username (default: admin): " DB_USER
+DB_USER=${DB_USER:-admin}
 
-read -s -p "Enter password for database user 'admin': " DB_PASSWORD
+read -s -p "Enter Database Password: " DB_PASSWORD
 echo
 if [[ -z "$DB_PASSWORD" ]]; then
     print_error "Database password is required!"
     exit 1
 fi
 
-# Get PostgreSQL superuser credentials for database creation
-echo
-print_status "PostgreSQL superuser credentials needed to create database and user"
-read -p "Enter PostgreSQL superuser username (default: postgres): " POSTGRES_USER
-POSTGRES_USER=${POSTGRES_USER:-postgres}
-
-read -s -p "Enter PostgreSQL superuser password: " POSTGRES_PASSWORD
-echo
-
-# Step 3: Create database and user
-print_status "Creating database and user..."
-export PGPASSWORD="$POSTGRES_PASSWORD"
-
-# Create user
-print_status "Creating database user '$DB_USERNAME'..."
-psql -h "$DB_HOST" -p "$DB_PORT" -U "$POSTGRES_USER" -d postgres -c "CREATE USER $DB_USERNAME WITH PASSWORD '$DB_PASSWORD';" 2>/dev/null || true
-
-# Create database
-print_status "Creating database 'aidb'..."
-psql -h "$DB_HOST" -p "$DB_PORT" -U "$POSTGRES_USER" -d postgres -c "CREATE DATABASE aidb OWNER $DB_USERNAME;" 2>/dev/null || true
-
-# Grant privileges
-print_status "Granting privileges..."
-psql -h "$DB_HOST" -p "$DB_PORT" -U "$POSTGRES_USER" -d postgres -c "GRANT ALL PRIVILEGES ON DATABASE aidb TO $DB_USERNAME;" 2>/dev/null || true
-
-# Clear password from environment
-unset PGPASSWORD
-
-print_status "Database setup completed ✓"
-
-# Make scripts executable
-chmod +x "$PROJECT_DIR/scripts/deploy.sh" 2>/dev/null || true
-chmod +x "$PROJECT_DIR/scripts/stop.sh" 2>/dev/null || true
-
-# Test connection
-print_status "Testing database connection..."
-export PGPASSWORD="$DB_PASSWORD"
-if psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USERNAME" -d aidb -c "SELECT 1;" >/dev/null 2>&1; then
-    print_status "Database connection test successful ✓"
-else
-    print_warning "Database connection test failed, but continuing with deployment..."
+# OpenAI Configuration
+read -p "Enter OpenAI API Key: " OPENAI_API_KEY
+if [[ -z "$OPENAI_API_KEY" ]]; then
+    print_error "OpenAI API Key is required!"
+    exit 1
 fi
-unset PGPASSWORD
 
-# Step 4: Create .env file with database configuration
-print_status "Creating .env file with database configuration..."
+read -p "Enter Channel Manager API Key: " CHANNEL_MANAGER_API_KEY
+if [[ -z "$CHANNEL_MANAGER_API_KEY" ]]; then
+    print_error "Channel Manager API Key is required!"
+    exit 1
+fi
+
+# Application configuration
+read -p "Enter Production mode (yes/no, default: no): " IS_PRODUCTION
+IS_PRODUCTION=${IS_PRODUCTION:-no}
+
+read -p "Enter Log directory (default: .): " LOG_URL
+LOG_URL=${LOG_URL:-"."}
+
+# Step 2: Create .env file with configuration
+print_status "Creating .env file with configuration..."
 cat > "$PROJECT_DIR/.env" << EOF
 # Database Configuration
 DB_HOST=$DB_HOST
 DB_PORT=$DB_PORT
 DB_NAME=$DB_NAME
-DB_USER=$DB_USERNAME
+DB_USER=$DB_USER
 DB_PASSWORD=$DB_PASSWORD
 
+# OpenAI Configuration
+OPENAI_API_KEY=$OPENAI_API_KEY
+
+# Channel Manager Configuration
+CHANNEL_MANAGER_API_KEY=$CHANNEL_MANAGER_API_KEY
+
 # Application Configuration
-IS_PRODUCTION=no
-LOG_URL=.
+IS_PRODUCTION=$IS_PRODUCTION
+LOG_URL=$LOG_URL
 EOF
 
 print_status ".env file created ✓"
 
-# Step 5: Install Python if not available
-print_status "Checking Python installation..."
-if ! command_exists python3; then
-    print_status "Python 3 not found. Installing Python..."
-    
-    # Detect OS and install Python
-    if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-        # Linux
-        if command_exists apt-get; then
-            # Ubuntu/Debian
-            sudo apt-get update
-            sudo apt-get install -y python3 python3-pip python3-venv
-        elif command_exists yum; then
-            # CentOS/RHEL
-            sudo yum install -y python3 python3-pip
-        elif command_exists dnf; then
-            # Fedora
-            sudo dnf install -y python3 python3-pip
-        else
-            print_error "Unsupported Linux distribution. Please install Python 3.8+ manually."
-            exit 1
-        fi
-    elif [[ "$OSTYPE" == "darwin"* ]]; then
-        # macOS
-        if command_exists brew; then
-            brew install python3
-        else
-            print_error "Homebrew not found. Please install Python 3.8+ manually."
-            exit 1
-        fi
-    else
-        print_error "Unsupported operating system. Please install Python 3.8+ manually."
-        exit 1
-    fi
-    
-    print_status "Python installation completed ✓"
-else
-    print_status "Python 3 found ✓"
-fi
-
-# Check Python version
-PYTHON_VERSION=$(python3 --version 2>&1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
-print_status "Found Python version: $PYTHON_VERSION"
-
-if version_compare $PYTHON_VERSION $PYTHON_MIN_VERSION; then
-    if [[ $? -eq 2 ]]; then
-        print_error "Python version $PYTHON_VERSION is too old. Please install Python $PYTHON_MIN_VERSION or higher."
-        exit 1
-    fi
-fi
-
-print_status "Python version check passed ✓"
-
-# Step 6: Check if pip is installed
-print_status "Checking pip installation..."
-if ! command_exists pip3; then
-    print_status "pip3 not found. Installing pip..."
-    if command_exists python3; then
-        # Try to install pip using python3
-        curl -sS https://bootstrap.pypa.io/get-pip.py | python3 - --user
-        export PATH="$HOME/.local/bin:$PATH"
-    else
-        print_error "pip3 is not installed and cannot be installed automatically."
-        exit 1
-    fi
-fi
-print_status "pip3 is available ✓"
-
-# Step 7: Navigate to project directory
+# Step 3: Navigate to project directory
 print_status "Navigating to project directory: $PROJECT_DIR"
 cd "$PROJECT_DIR"
 
-# Step 8: Create virtual environment
+# Step 4: Check if Python3 is available
+if ! command_exists python3; then
+    print_error "Python 3 is not installed. Please install Python 3.8+ first."
+    exit 1
+fi
+print_status "Python 3 found ✓"
+
+# Step 5: Create virtual environment
 print_status "Setting up virtual environment..."
 if [ ! -d "$VENV_NAME" ]; then
     print_status "Creating virtual environment '$VENV_NAME'..."
@@ -291,16 +141,16 @@ else
     print_warning "Virtual environment '$VENV_NAME' already exists. Skipping creation."
 fi
 
-# Step 9: Activate virtual environment
+# Step 6: Activate virtual environment
 print_status "Activating virtual environment..."
 source "$VENV_NAME/bin/activate"
 print_status "Virtual environment activated ✓"
 
-# Step 10: Upgrade pip
+# Step 7: Upgrade pip
 print_status "Upgrading pip..."
 pip install --upgrade pip
 
-# Step 11: Install dependencies
+# Step 8: Install dependencies
 print_status "Installing dependencies from requirements.txt..."
 if [ -f "requirements.txt" ]; then
     pip install -r requirements.txt
@@ -310,17 +160,14 @@ else
     exit 1
 fi
 
-# Step 12: Create systemd service file
-print_status "Creating systemd service file..."
+# Step 9: Create and start systemd service
+print_status "Creating systemd service..."
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
 
-# Check if we have sudo privileges
-if sudo -n true 2>/dev/null; then
-    sudo tee "$SERVICE_FILE" > /dev/null <<EOF
+sudo tee "$SERVICE_FILE" > /dev/null <<EOF
 [Unit]
 Description=$PROJECT_NAME FastAPI Application
-After=network.target postgresql.service
-Wants=postgresql.service
+After=network.target
 
 [Service]
 Type=simple
@@ -337,85 +184,36 @@ StandardError=journal
 [Install]
 WantedBy=multi-user.target
 EOF
-    print_status "Systemd service file created ✓"
-    
-    # Reload systemd and enable the service
-    print_status "Reloading systemd daemon..."
-    sudo systemctl daemon-reload
-    
-    print_status "Enabling $SERVICE_NAME service..."
-    sudo systemctl enable "$SERVICE_NAME"
-    
-    print_status "Starting $SERVICE_NAME service..."
-    sudo systemctl start "$SERVICE_NAME"
-    
-    # Wait a moment for the service to start
-    sleep 5
-    
-    # Check service status
-    if sudo systemctl is-active --quiet "$SERVICE_NAME"; then
-        print_status "Service is running ✓"
-        print_status "Service status:"
-        sudo systemctl status "$SERVICE_NAME" --no-pager -l
-    else
-        print_error "Service failed to start!"
-        print_error "Service logs:"
-        sudo journalctl -u "$SERVICE_NAME" --no-pager -n 20
-        print_error "Check logs with: sudo journalctl -u $SERVICE_NAME -f"
-        exit 1
-    fi
-    
+
+print_status "Systemd service file created ✓"
+
+# Reload systemd and enable the service
+print_status "Reloading systemd daemon..."
+sudo systemctl daemon-reload
+
+print_status "Enabling $SERVICE_NAME service..."
+sudo systemctl enable "$SERVICE_NAME"
+
+print_status "Starting $SERVICE_NAME service..."
+sudo systemctl start "$SERVICE_NAME"
+
+# Wait a moment for the service to start
+sleep 5
+
+# Check service status
+if sudo systemctl is-active --quiet "$SERVICE_NAME"; then
+    print_status "Service is running ✓"
+    print_status "Service status:"
+    sudo systemctl status "$SERVICE_NAME" --no-pager -l
 else
-    print_warning "No sudo privileges. Creating service file manually..."
-    print_warning "Please run the following commands as root:"
-    echo ""
-    echo "sudo tee $SERVICE_FILE > /dev/null <<EOF"
-    echo "[Unit]"
-    echo "Description=$PROJECT_NAME FastAPI Application"
-    echo "After=network.target"
-    echo ""
-    echo "[Service]"
-    echo "Type=simple"
-    echo "User=$SERVICE_USER"
-    echo "WorkingDirectory=$PROJECT_DIR"
-    echo "Environment=PATH=$PROJECT_DIR/$VENV_NAME/bin"
-    echo "ExecStart=$PROJECT_DIR/$VENV_NAME/bin/python main.py"
-    echo "Restart=always"
-    echo "RestartSec=10"
-    echo ""
-    echo "[Install]"
-    echo "WantedBy=multi-user.target"
-    echo "EOF"
-    echo ""
-    echo "sudo systemctl daemon-reload"
-    echo "sudo systemctl enable $SERVICE_NAME"
-    echo "sudo systemctl start $SERVICE_NAME"
-    echo ""
-    print_status "Alternatively, running the application directly..."
-    
-    # Run the application directly
-    print_status "Starting application on port $SERVICE_PORT..."
-    cd "$PROJECT_DIR"
-    source "$VENV_NAME/bin/activate"
-    nohup python main.py > app.log 2>&1 &
-    APP_PID=$!
-    echo $APP_PID > app.pid
-    print_status "Application started with PID: $APP_PID"
-    print_status "Logs are being written to app.log"
-    print_status "To stop the application, run: kill $APP_PID"
-    
-    # Wait a moment and check if the process is still running
-    sleep 3
-    if ps -p "$APP_PID" > /dev/null 2>&1; then
-        print_status "Application is running successfully ✓"
-    else
-        print_error "Application failed to start!"
-        print_error "Check app.log for details"
-        exit 1
-    fi
+    print_error "Service failed to start!"
+    print_error "Service logs:"
+    sudo journalctl -u "$SERVICE_NAME" --no-pager -n 20
+    print_error "Check logs with: sudo journalctl -u $SERVICE_NAME -f"
+    exit 1
 fi
 
-# Step 13: Display useful information
+# Step 10: Display useful information
 echo ""
 echo -e "${BLUE}===================================================================${NC}"
 echo -e "${GREEN}                    Deployment Complete!${NC}"
@@ -427,12 +225,13 @@ echo "  • Virtual Environment: $PROJECT_DIR/$VENV_NAME"
 echo "  • Application URL: http://localhost:$SERVICE_PORT"
 echo "  • Health Check: http://localhost:$SERVICE_PORT/health"
 echo "  • API Documentation: http://localhost:$SERVICE_PORT/docs"
+echo "  • Environment File: $PROJECT_DIR/.env"
 echo ""
-print_status "Database Information:"
-echo "  • Database Name: $DB_NAME"
-echo "  • Database User: $DB_USERNAME"
-echo "  • Database Host: $DB_HOST:$DB_PORT"
-echo "  • Configuration: $PROJECT_DIR/.env"
+print_status "Configuration Summary:"
+echo "  • Database: $DB_USER@$DB_HOST:$DB_PORT/$DB_NAME"
+echo "  • OpenAI API: Configured ✓"
+echo "  • Channel Manager API: Configured ✓"
+echo "  • Production Mode: $IS_PRODUCTION"
 echo ""
 print_status "Service Management Commands:"
 echo "  • Start service: sudo systemctl start $SERVICE_NAME"
@@ -441,8 +240,7 @@ echo "  • Restart service: sudo systemctl restart $SERVICE_NAME"
 echo "  • Check status: sudo systemctl status $SERVICE_NAME"
 echo "  • View logs: sudo journalctl -u $SERVICE_NAME -f"
 echo ""
-print_status "To test the deployment:"
-echo "  • API Health: curl http://localhost:$SERVICE_PORT/health"
-echo "  • Database Test: python3 scripts/database_example.py"
+print_status "To test the API:"
+echo "  curl http://localhost:$SERVICE_PORT/health"
 echo ""
 echo -e "${GREEN}Happy coding! 🚀${NC}" 

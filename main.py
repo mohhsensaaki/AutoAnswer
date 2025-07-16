@@ -7,10 +7,14 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from dotenv import load_dotenv
 from services.common.log_creator import create_logger
 from services.vector_store.openai.vector_store_router import openai_vector_store_router
 from services.vector_store.openai.db import init_db as openai_vector_store_db_init
 #from config import settings
+
+# Load environment variables from .env file
+load_dotenv()
 
 logger = create_logger(is_production=os.getenv("IS_PRODUCTION", "no"), log_url=os.getenv("LOG_URL", "."))
 

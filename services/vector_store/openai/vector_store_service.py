@@ -255,7 +255,7 @@ class VectorStoreService:
             )
             
             self.logger.info(f"Search completed successfully for workspace: {workspace_id}")
-            return documents
+            return documents.to_dict()
             
         except Exception as e:
             self.logger.error(f"Search failed for workspace {workspace_id}: {str(e)}")
