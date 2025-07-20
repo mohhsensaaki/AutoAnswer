@@ -1,0 +1,71 @@
+from fastapi import APIRouter, HTTPException, Body
+from fastapi.responses import JSONResponse
+from services.common.decorators import response_formatter
+from services.workflow.n8n.n8n_service import n8n_service
+from services.workflow.n8n.models import (
+    WorkflowExecuteRequest,
+    WorkflowExecuteResponse,
+    WorkflowTemplatesResponse
+)
+from typing import Dict, Any
+
+# Create FastAPI router
+n8n_router = APIRouter(
+    prefix="/workflow",
+    tags=["n8n_workflow"]
+)
+
+
+@n8n_router.post("/{workspace}/{segment}", response_model=WorkflowExecuteResponse)
+@response_formatter
+async def execute_workflow(
+    workspace: str,
+    segment: str,
+    request_data: Dict[str, Any] = Body(...)
+):
+    """
+    Execute a workflow for the given workspace and segment.
+    
+    If the workflow doesn't exist, it will be created from a template workflow
+    that has tags matching the workspace, segment, and 'template'.
+    
+    Args:
+        workspace: The workspace identifier
+        segment: The segment identifier  
+        request_data: The data to pass to the workflow
+        
+    Returns:
+        WorkflowExecuteResponse with execution status and results
+    """
+    
+    result = await n8n_service.execute_workflow(workspace, segment, request_data)
+        
+    return JSONResponse(content=result.model_dump())
+        
+
+@n8n_router.get("/templates", response_model=WorkflowTemplatesResponse)
+@response_formatter
+async def get_template_workflows():
+    """
+    Get all workflow templates.
+    
+    Returns a list of workflows that have the 'template' tag,
+    including their ID, workspace name, and description.
+    
+    Returns:
+        WorkflowTemplatesResponse with list of template workflows
+    """
+
+    result = await n8n_service.get_template_workflows()
+        
+    return JSONResponse(content=result.model_dump())
+
+@n8n_router.get("/health")
+async def health_check():
+    """Health check endpoint for n8n workflow service"""
+    return {
+        "status": "healthy", 
+        "service": "n8n Workflow Service",
+        "base_url": n8n_service.n8n_base_url,
+        "env_prefix": n8n_service.env_prefix
+    } 

@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 from services.common.log_creator import create_logger
 from services.vector_store.openai.vector_store_router import openai_vector_store_router
 from services.vector_store.openai.db import init_db as openai_vector_store_db_init
+from services.workflow.n8n.n8n_router import n8n_router
 #from config import settings
 
 # Load environment variables from .env file
@@ -58,6 +59,7 @@ def create_app() -> FastAPI:
     
     # Include routers
     app.include_router(openai_vector_store_router, prefix="/api/v1/vector_store")
+    app.include_router(n8n_router, prefix="/api/v1")
     
     return app
 
