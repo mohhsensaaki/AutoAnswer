@@ -90,6 +90,15 @@ if [[ -z "$CHANNEL_MANAGER_API_KEY" ]]; then
     exit 1
 fi
 
+# n8n Workflow Configuration
+read -p "Enter n8n Base URL (default: http://localhost:5678): " N8N_BASE_URL
+N8N_BASE_URL=${N8N_BASE_URL:-http://localhost:5678}
+
+read -p "Enter n8n API Key (leave empty if not using n8n): " N8N_API_KEY
+
+read -p "Enter n8n Environment Prefix (default: v1): " N8N_ENV_PREFIX
+N8N_ENV_PREFIX=${N8N_ENV_PREFIX:-v1}
+
 # Application configuration
 read -p "Enter Production mode (yes/no, default: no): " IS_PRODUCTION
 IS_PRODUCTION=${IS_PRODUCTION:-no}
@@ -112,6 +121,11 @@ OPENAI_API_KEY=$OPENAI_API_KEY
 
 # Channel Manager Configuration
 CHANNEL_MANAGER_API_KEY=$CHANNEL_MANAGER_API_KEY
+
+# n8n Workflow Configuration
+N8N_BASE_URL=$N8N_BASE_URL
+N8N_API_KEY=$N8N_API_KEY
+N8N_ENV_PREFIX=$N8N_ENV_PREFIX
 
 # Application Configuration
 IS_PRODUCTION=$IS_PRODUCTION
@@ -231,6 +245,7 @@ print_status "Configuration Summary:"
 echo "  • Database: $DB_USER@$DB_HOST:$DB_PORT/$DB_NAME"
 echo "  • OpenAI API: Configured ✓"
 echo "  • Channel Manager API: Configured ✓"
+echo "  • n8n Workflow Service: $N8N_BASE_URL (API Key: ${N8N_API_KEY:+Configured}${N8N_API_KEY:-Not Set})"
 echo "  • Production Mode: $IS_PRODUCTION"
 echo ""
 print_status "Service Management Commands:"
@@ -242,5 +257,7 @@ echo "  • View logs: sudo journalctl -u $SERVICE_NAME -f"
 echo ""
 print_status "To test the API:"
 echo "  curl http://localhost:$SERVICE_PORT/health"
+echo "  curl http://localhost:$SERVICE_PORT/api/v1/workflow/health"
+echo "  curl http://localhost:$SERVICE_PORT/api/v1/workflow/templates"
 echo ""
-echo -e "${GREEN}Happy coding! 🚀${NC}" 
+echo -e "${GREEN}Happy services! 🚀${NC}" 

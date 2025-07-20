@@ -233,8 +233,30 @@ try {
     exit 1
 }
 
-# Step 4: Create .env file with database configuration
-Write-Status "Creating .env file with database configuration..."
+# Step 4: Get additional service configurations
+Write-Host ""
+Write-Status "Additional Service Configuration"
+
+# n8n Workflow Configuration
+Write-Host "n8n Workflow Service Configuration:" -ForegroundColor $Yellow
+$n8nBaseUrl = Read-Host "Enter n8n Base URL (default: http://localhost:5678)"
+if (-not $n8nBaseUrl) { $n8nBaseUrl = "http://localhost:5678" }
+
+$n8nApiKey = Read-Host "Enter n8n API Key (leave empty if not using n8n)"
+
+$n8nEnvPrefix = Read-Host "Enter n8n Environment Prefix (default: v1)"
+if (-not $n8nEnvPrefix) { $n8nEnvPrefix = "v1" }
+
+# OpenAI Configuration
+Write-Host "OpenAI Configuration:" -ForegroundColor $Yellow
+$openaiApiKey = Read-Host "Enter OpenAI API Key (leave empty if not using OpenAI features)"
+
+# Channel Manager Configuration
+Write-Host "Channel Manager Configuration:" -ForegroundColor $Yellow
+$channelManagerApiKey = Read-Host "Enter Channel Manager API Key (leave empty if not using Channel Manager)"
+
+# Step 5: Create .env file with configuration
+Write-Status "Creating .env file with configuration..."
 $envContent = @"
 # Database Configuration
 DB_HOST=$dbHost
@@ -242,6 +264,17 @@ DB_PORT=$dbPort
 DB_NAME=ai
 DB_USER=$dbUsername
 DB_PASSWORD=$dbPasswordPlain
+
+# OpenAI Configuration
+OPENAI_API_KEY=$openaiApiKey
+
+# Channel Manager Configuration
+CHANNEL_MANAGER_API_KEY=$channelManagerApiKey
+
+# n8n Workflow Configuration
+N8N_BASE_URL=$n8nBaseUrl
+N8N_API_KEY=$n8nApiKey
+N8N_ENV_PREFIX=$n8nEnvPrefix
 
 # Application Configuration
 IS_PRODUCTION=no
@@ -252,7 +285,7 @@ $envFile = Join-Path $ProjectDir ".env"
 $envContent | Out-File -FilePath $envFile -Encoding UTF8
 Write-Status ".env file created ✓"
 
-# Step 5: Check if Python is installed
+# Step 6: Check if Python is installed
 Write-Status "Checking Python installation..."
 try {
     $pythonVersion = (python --version 2>&1) -replace "Python ", ""
@@ -271,7 +304,7 @@ try {
     exit 1
 }
 
-# Step 6: Check if pip is installed
+# Step 7: Check if pip is installed
 Write-Status "Checking pip installation..."
 try {
     $pipVersion = python -m pip --version
@@ -281,11 +314,11 @@ try {
     exit 1
 }
 
-# Step 7: Navigate to project directory
+# Step 8: Navigate to project directory
 Write-Status "Navigating to project directory: $ProjectDir"
 Set-Location $ProjectDir
 
-# Step 8: Create virtual environment
+# Step 9: Create virtual environment
 Write-Status "Setting up virtual environment..."
 if (-not (Test-Path $VenvName)) {
     Write-Status "Creating virtual environment '$VenvName'..."
@@ -295,7 +328,7 @@ if (-not (Test-Path $VenvName)) {
     Write-Warning "Virtual environment '$VenvName' already exists. Skipping creation."
 }
 
-# Step 9: Activate virtual environment
+# Step 10: Activate virtual environment
 Write-Status "Activating virtual environment..."
 $activateScript = Join-Path $VenvName "Scripts\Activate.ps1"
 if (Test-Path $activateScript) {
@@ -306,11 +339,11 @@ if (Test-Path $activateScript) {
     exit 1
 }
 
-# Step 10: Upgrade pip
+# Step 11: Upgrade pip
 Write-Status "Upgrading pip..."
 python -m pip install --upgrade pip
 
-# Step 11: Install dependencies
+# Step 12: Install dependencies
 Write-Status "Installing dependencies from requirements.txt..."
 if (Test-Path "requirements.txt") {
     python -m pip install -r requirements.txt
@@ -320,7 +353,7 @@ if (Test-Path "requirements.txt") {
     exit 1
 }
 
-# Step 12: Setup as service or run directly
+# Step 13: Setup as service or run directly
 if ($AsService) {
     if (-not (Test-Administrator)) {
         Write-Error "Administrator privileges required to create Windows service."
@@ -402,7 +435,7 @@ pause
     Write-Status "Application started! Check if it's running on http://localhost:$ServicePort"
 }
 
-# Step 13: Display useful information
+# Step 14: Display useful information
 Write-Host ""
 Write-Host "==================================================================" -ForegroundColor $Blue
 Write-Host "                    Deployment Complete!" -ForegroundColor $Green
@@ -414,6 +447,25 @@ Write-Host "  • Virtual Environment: $ProjectDir\$VenvName"
 Write-Host "  • Application URL: http://localhost:$ServicePort"
 Write-Host "  • Health Check: http://localhost:$ServicePort/health"
 Write-Host "  • API Documentation: http://localhost:$ServicePort/docs"
+Write-Host "  • Environment File: $ProjectDir\.env"
+Write-Host ""
+Write-Status "Configuration Summary:"
+Write-Host "  • Database: $dbUsername@$dbHost:$dbPort/ai"
+if ($openaiApiKey) {
+    Write-Host "  • OpenAI API: Configured ✓"
+} else {
+    Write-Host "  • OpenAI API: Not Configured"
+}
+if ($channelManagerApiKey) {
+    Write-Host "  • Channel Manager API: Configured ✓"
+} else {
+    Write-Host "  • Channel Manager API: Not Configured"
+}
+if ($n8nApiKey) {
+    Write-Host "  • n8n Workflow Service: $n8nBaseUrl (API Key: Configured)"
+} else {
+    Write-Host "  • n8n Workflow Service: $n8nBaseUrl (API Key: Not Set)"
+}
 Write-Host ""
 
 if ($AsService) {
@@ -432,5 +484,7 @@ if ($AsService) {
 
 Write-Status "To test the API, try:"
 Write-Host "  Invoke-RestMethod -Uri http://localhost:$ServicePort/health"
+Write-Host "  Invoke-RestMethod -Uri http://localhost:$ServicePort/api/v1/workflow/health"
+Write-Host "  Invoke-RestMethod -Uri http://localhost:$ServicePort/api/v1/workflow/templates"
 Write-Host ""
 Write-Host "Happy coding! 🚀" -ForegroundColor $Green 
