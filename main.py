@@ -4,10 +4,12 @@ FastAPI application initialization and configuration.
 import os, sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
+import secrets
 from services.common.log_creator import create_logger
 from services.vector_store.openai.vector_store_router import openai_vector_store_router
 from services.vector_store.openai.db import init_db as openai_vector_store_db_init
@@ -18,6 +20,27 @@ from services.workflow.n8n.n8n_router import n8n_router
 load_dotenv()
 
 logger = create_logger(is_production=os.getenv("IS_PRODUCTION", "no"), log_url=os.getenv("LOG_URL", "."))
+
+# Initialize HTTP Basic authentication
+security = HTTPBasic()
+
+def verify_swagger_credentials(credentials: HTTPBasicCredentials = Depends(security)):
+    """
+    Verify credentials for Swagger UI access.
+    """
+    swagger_username = os.getenv("SWAGGER_USERNAME", "admin")
+    swagger_password = os.getenv("SWAGGER_PASSWORD", "admin")
+    
+    correct_username = secrets.compare_digest(credentials.username, swagger_username)
+    correct_password = secrets.compare_digest(credentials.password, swagger_password)
+    
+    if not (correct_username and correct_password):
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid credentials",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+    return credentials.username
 
 
 @asynccontextmanager
@@ -45,7 +68,8 @@ def create_app() -> FastAPI:
         title="Chatbot Platform API",
         description="A modular chatbot platform supporting multiple business verticals",
         version="0.0.0",
-        lifespan=lifespan
+        lifespan=lifespan,
+        dependencies=[Depends(verify_swagger_credentials)]
     )
     
     # Add CORS middleware
@@ -85,4 +109,7 @@ async def global_exception_handler(request, exc):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000) 
+    uvicorn.run(app,
+                host="0.0.0.0",
+                port=int(os.getenv("SERVICE_PORT", 8000))
+                ) 
