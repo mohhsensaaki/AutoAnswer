@@ -37,10 +37,12 @@ async def execute_workflow(
     Returns:
         WorkflowExecuteResponse with execution status and results
     """
-    
-    result = await n8n_service.execute_workflow(workspace, segment, request_data)
-        
-    return JSONResponse(content=result.model_dump())
+    try:
+        result = await n8n_service.execute_workflow(workspace, segment, request_data)
+        return JSONResponse(content=result.model_dump())
+    except Exception as e:
+        status_code = getattr(e, 'status_code', 400)
+        raise HTTPException(status_code=status_code, detail=str(e))
         
 
 @n8n_router.get("/templates", response_model=WorkflowTemplatesResponse)
@@ -55,17 +57,23 @@ async def get_template_workflows():
     Returns:
         WorkflowTemplatesResponse with list of template workflows
     """
-
-    result = await n8n_service.get_template_workflows()
-        
-    return JSONResponse(content=result.model_dump())
+    try:
+        result = await n8n_service.get_template_workflows()
+        return JSONResponse(content=result.model_dump())
+    except Exception as e:
+        status_code = getattr(e, 'status_code', 400)
+        raise HTTPException(status_code=status_code, detail=str(e))
 
 @n8n_router.get("/health")
 async def health_check():
     """Health check endpoint for n8n workflow service"""
-    return {
-        "status": "healthy", 
-        "service": "n8n Workflow Service",
-        "base_url": n8n_service.n8n_base_url,
-        "env_prefix": n8n_service.env_prefix
-    } 
+    try:
+        return {
+            "status": "healthy", 
+            "service": "n8n Workflow Service",
+            "base_url": n8n_service.n8n_base_url,
+            "env_prefix": n8n_service.env_prefix
+        }
+    except Exception as e:
+        status_code = getattr(e, 'status_code', 500)
+        raise HTTPException(status_code=status_code, detail=str(e))
