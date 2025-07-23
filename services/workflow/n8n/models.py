@@ -8,24 +8,15 @@ class WorkflowExecuteRequest(BaseModel):
     data: Dict[str, Any]
 
 
-class WorkflowTemplateInfo(BaseModel):
-    """Model for workflow template information"""
-    id: str
-    name: str
-    description: Optional[str] = None
-    tags: Optional[List[str]] = None
-
 
 class WorkflowTemplatesResponse(BaseModel):
     """Response model for listing workflow templates"""
-    success: bool
-    templates: List[WorkflowTemplateInfo]
+    templates: List[str]
     message: Optional[str] = None
 
 
 class WorkflowExecuteResponse(BaseModel):
     """Response model for workflow execution"""
-    success: bool
     message: Optional[str] = None
 
 

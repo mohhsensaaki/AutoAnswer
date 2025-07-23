@@ -16,7 +16,7 @@ n8n_router = APIRouter(
 )
 
 
-@n8n_router.post("/{workspace}/{segment}", response_model=WorkflowExecuteResponse)
+@n8n_router.post("/{workspace}/{segment}/message", response_model=WorkflowExecuteResponse)
 @response_formatter
 async def execute_workflow(
     workspace: str,
@@ -61,7 +61,7 @@ async def get_template_workflows():
         result = await n8n_service.get_template_workflows()
         return JSONResponse(content=result.model_dump())
     except Exception as e:
-        status_code = getattr(e, 'status_code', 400)
+        status_code = getattr(e, 'status_code', 500)
         raise HTTPException(status_code=status_code, detail=str(e))
 
 @n8n_router.get("/health")

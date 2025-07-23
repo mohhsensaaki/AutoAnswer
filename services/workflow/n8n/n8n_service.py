@@ -3,12 +3,9 @@ import httpx
 from typing import List, Dict, Any, Optional
 from dotenv import load_dotenv
 from services.common.log_creator import create_logger
-from services.workflow.n8n.models import (
-    WorkflowTemplateInfo, 
+from services.workflow.n8n.models import ( 
     WorkflowTemplatesResponse,
     WorkflowExecuteResponse,
-    N8nWorkflowCloneRequest,
-    N8nWorkflowUpdateRequest
 )
 
 # Load environment variables
@@ -70,7 +67,6 @@ class N8nService:
             if response.status_code == 200:
                 self.logger.info(f"Workflow executed successfully for {workspace}/{segment}")
                 return WorkflowExecuteResponse(
-                    success=True,
                     message="Workflow executed successfully",
                 )
             elif response.status_code == 404:
@@ -275,32 +271,18 @@ class N8nService:
             
             for workflow in workflows:
                 tags = workflow.get('tags', [])
-                if isinstance(tags, list):
+                if isinstance(tags, list) and len(tags) == 2:
                     tag_names = [tag.get('name', '') if isinstance(tag, dict) else str(tag) for tag in tags]
                 else:
                     tag_names = []
                 
                 # Check if this workflow has 'template' tag
-                if 'template' in tag_names:
-                    # Extract workspace from tags (assuming it's not 'template' or common segment names)
-                    workspace = None
-                    for tag in tag_names:
-                        if tag not in ['template']:  # Add other common tags to exclude if needed
-                            workspace = tag
-                            break
-                    
-                    template_info = WorkflowTemplateInfo(
-                        id=workflow.get('id', ''),
-                        name=workflow.get('name', ''),
-                        description=workflow.get('description', ''),  # n8n doesn't have separate description field
-                        workspace=workspace,
-                        tags=tag_names
-                    )
-                    templates.append(template_info)
+                if 'template' in tag_names:                 
+                    templates.append([tag for tag in workflow.get('tags', '') 
+                              if tag != 'template'][0].get('name', ''))
             
             self.logger.info(f"Found {len(templates)} template workflows")
             return WorkflowTemplatesResponse(
-                success=True,
                 templates=templates,
                 message=f"Found {len(templates)} template workflows"
             )
