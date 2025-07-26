@@ -45,25 +45,6 @@ async def execute_workflow(
         raise HTTPException(status_code=status_code, detail=str(e))
         
 
-@n8n_router.get("/templates", response_model=WorkflowTemplatesResponse)
-@response_formatter
-async def get_template_workflows():
-    """
-    Get all workflow templates.
-    
-    Returns a list of workflows that have the 'template' tag,
-    including their ID, workspace name, and description.
-    
-    Returns:
-        WorkflowTemplatesResponse with list of template workflows
-    """
-    try:
-        result = await n8n_service.get_template_workflows()
-        return JSONResponse(content=result.model_dump())
-    except Exception as e:
-        status_code = getattr(e, 'status_code', 500)
-        raise HTTPException(status_code=status_code, detail=str(e))
-
 @n8n_router.get("/health")
 async def health_check():
     """Health check endpoint for n8n workflow service"""

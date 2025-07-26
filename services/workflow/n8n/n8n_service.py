@@ -126,6 +126,14 @@ class N8nService:
                     tag_names = [tag.get('name', '') if isinstance(tag, dict) else str(tag) for tag in tags]
                 else:
                     tag_names = []
+                defualt_template = None
+                # Check if this workflow has template tag and matches workspace and segment
+                if ('template' in tag_names and
+                    ('faq' in tag_names or 'FAQ' in tag_names)
+                    ):
+                    
+                    self.logger.info(f"Found template workflow: {workflow.get('name')} with tags: {tag_names}")
+                    defualt_template = workflow
                 
                 # Check if this workflow has template tag and matches workspace and segment
                 if ('template' in tag_names and
@@ -135,7 +143,9 @@ class N8nService:
                     return workflow
             
             self.logger.warning(f"No template workflow found with tags: template, {segment}")
-            return None
+            if not defualt_template:
+                return None
+            return defualt_template
                 
     
     async def _clone_workflow(self, workflow_id: str, new_name: str, workspace: str, segment: str) -> Optional[Dict[str, Any]]:
