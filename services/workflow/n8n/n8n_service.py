@@ -176,7 +176,7 @@ class N8nService:
             llm_trigger_node = [data for data in clone_data["nodes"] if data['name'] == 'llm trigger'][0]
             # Set the 'path' parameter to a new value
             llm_trigger_node["parameters"]["path"] = f"{self.env_prefix}/{workspace}/{segment}"
-
+            del clone_data["settings"]['callerPolicy']
             
             # Create the new workflow
             create_response = await client.post(
