@@ -1,5 +1,5 @@
 """
-FastAPI application initialization and configuration.
+FastAPI application initialization and configuration. there the end points
 """
 import os, sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
