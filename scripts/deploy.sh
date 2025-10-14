@@ -8,6 +8,7 @@
 # 2. Creates .env file with configuration
 # 3. Installs requirements in virtual environment
 # 4. Creates and starts systemd service for main.py
+# deploy new feature
 # ==================================================================
 
 set -e  # Exit on any error
