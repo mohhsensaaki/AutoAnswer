@@ -43,8 +43,40 @@ async def execute_workflow(
     except Exception as e:
         status_code = getattr(e, 'status_code', 400)
         raise HTTPException(status_code=status_code, detail=str(e))
-        
 
+
+@n8n_router.post("/message", response_model=WorkflowExecuteResponse)
+@response_formatter
+async def execute_workflow(
+    request_data: Dict[str, Any] = Body(...)
+):
+    """
+    Execute a workflow for the given workspace and segment.
+
+    Automatically extracts `workspace` as either 'project_id' or 'workspace',
+    and `segment` as either 'project_name' or 'segment' from request_data.
+
+    If the workflow doesn't exist, it will be created from a template workflow
+    that has tags matching the workspace, segment, and 'template'.
+
+    Args:
+        request_data: The data to pass to the workflow, must include identifiers.
+    Returns:
+        WorkflowExecuteResponse with execution status and results.
+    """
+    try:
+        workspace = request_data.get("project_id") or request_data.get("workspace")
+        segment = request_data.get("project_name") or request_data.get("segment")
+        if not workspace or not segment:
+            raise HTTPException(
+                status_code=400,
+                detail="Both workspace (or project_id) and segment (or project_name) must be provided in request_data."
+            )
+        result = await n8n_service.execute_workflow(workspace, segment, request_data)
+        return JSONResponse(content=result.model_dump())
+    except Exception as e:
+        status_code = getattr(e, 'status_code', 400)
+        raise HTTPException(status_code=status_code, detail=str(e))       
 @n8n_router.get("/health")
 async def health_check():
     """Health check endpoint for n8n workflow service"""
