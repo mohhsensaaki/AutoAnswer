@@ -14,6 +14,11 @@ from services.common.log_creator import create_logger
 from services.vector_store.openai.vector_store_router import openai_vector_store_router
 from services.vector_store.openai.db import init_db as openai_vector_store_db_init
 from services.workflow.n8n.n8n_router import n8n_router
+from services.telegram.sender_router import (
+    telegram_sender_router,
+    init_telegram_sender,
+    shutdown_telegram_sender
+)
 #from config import settings
 
 # Load environment variables from .env file
@@ -50,13 +55,23 @@ async def lifespan(app: FastAPI):
     """
     logger.info("Starting up chatbot platform...")
     openai_vector_store_db_init()
-    # Initialize core services here
-    # await initialize_vector_db()
-    # await initialize_llm_engine()
+    
+    # Initialize Telegram sender service
+    try:
+        await init_telegram_sender()
+        logger.info("Telegram sender service initialized")
+    except Exception as e:
+        logger.warning(f"Failed to initialize Telegram sender: {e}")
     
     yield
     
     logger.info("Shutting down chatbot platform...")
+    
+    # Shutdown Telegram sender service
+    try:
+        await shutdown_telegram_sender()
+    except Exception as e:
+        logger.warning(f"Error shutting down Telegram sender: {e}")
     # Clean up resources here
 
 
@@ -84,6 +99,7 @@ def create_app() -> FastAPI:
     # Include routers
     app.include_router(openai_vector_store_router, prefix="/api/v1/vector_store")
     app.include_router(n8n_router, prefix="/api/v1")
+    app.include_router(telegram_sender_router, prefix="/api/v1/telegram")
     
     return app
 
