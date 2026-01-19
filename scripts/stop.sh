@@ -13,6 +13,7 @@ NC='\033[0m' # No Color
 
 # Configuration
 SERVICE_NAME="newafzzinaai"
+TELEGRAM_SERVICE_NAME="newafzzinaai-telegram"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
@@ -33,32 +34,48 @@ echo -e "${BLUE}================================================================
 echo -e "${BLUE}           Stopping NewAfzzinaAI FastAPI Application${NC}"
 echo -e "${BLUE}===================================================================${NC}"
 
-# Check if service exists and stop it
-if systemctl list-unit-files | grep -q "$SERVICE_NAME.service"; then
-    print_status "Stopping systemd service..."
-    if sudo systemctl is-active --quiet "$SERVICE_NAME"; then
-        sudo systemctl stop "$SERVICE_NAME"
-        print_status "Service stopped ✓"
+# Function to stop a systemd service
+stop_service() {
+    local svc_name=$1
+    local svc_desc=$2
+    
+    if systemctl list-unit-files | grep -q "${svc_name}.service"; then
+        print_status "Stopping $svc_desc service..."
+        if sudo systemctl is-active --quiet "$svc_name"; then
+            sudo systemctl stop "$svc_name"
+            print_status "$svc_desc service stopped ✓"
+        else
+            print_warning "$svc_desc service was not running"
+        fi
     else
-        print_warning "Service was not running"
+        print_warning "No $svc_desc systemd service found"
     fi
-    
-    # Optionally disable the service
-    read -p "Do you want to disable the service from auto-starting? (y/N): " disable_service
+}
+
+# Stop both services
+stop_service "$SERVICE_NAME" "Main API"
+stop_service "$TELEGRAM_SERVICE_NAME" "Telegram Listener"
+
+# Check if main service exists for disable/remove options
+if systemctl list-unit-files | grep -q "$SERVICE_NAME.service"; then
+    # Optionally disable the services
+    read -p "Do you want to disable services from auto-starting? (y/N): " disable_service
     if [[ $disable_service =~ ^[Yy]$ ]]; then
-        sudo systemctl disable "$SERVICE_NAME"
-        print_status "Service disabled ✓"
+        sudo systemctl disable "$SERVICE_NAME" 2>/dev/null || true
+        sudo systemctl disable "$TELEGRAM_SERVICE_NAME" 2>/dev/null || true
+        print_status "Services disabled ✓"
     fi
     
-    # Optionally remove the service file
-    read -p "Do you want to remove the service file completely? (y/N): " remove_service
+    # Optionally remove the service files
+    read -p "Do you want to remove the service files completely? (y/N): " remove_service
     if [[ $remove_service =~ ^[Yy]$ ]]; then
         sudo rm -f "/etc/systemd/system/${SERVICE_NAME}.service"
+        sudo rm -f "/etc/systemd/system/${TELEGRAM_SERVICE_NAME}.service"
         sudo systemctl daemon-reload
-        print_status "Service file removed ✓"
+        print_status "Service files removed ✓"
     fi
 else
-    print_warning "No systemd service found. Checking for direct process..."
+    print_warning "No systemd services found. Checking for direct processes..."
     
     # Check if there's a PID file from direct execution
     if [ -f "$PROJECT_DIR/app.pid" ]; then
@@ -79,9 +96,19 @@ else
         if [ -n "$MAIN_PIDS" ]; then
             print_status "Found running main.py processes: $MAIN_PIDS"
             echo "$MAIN_PIDS" | xargs kill
-            print_status "Processes stopped ✓"
+            print_status "main.py processes stopped ✓"
         else
             print_warning "No running main.py processes found"
+        fi
+        
+        # Look for telegramlistener.py processes
+        TELEGRAM_PIDS=$(pgrep -f "python.*telegramlistener.py" || true)
+        if [ -n "$TELEGRAM_PIDS" ]; then
+            print_status "Found running telegramlistener.py processes: $TELEGRAM_PIDS"
+            echo "$TELEGRAM_PIDS" | xargs kill
+            print_status "telegramlistener.py processes stopped ✓"
+        else
+            print_warning "No running telegramlistener.py processes found"
         fi
     fi
 fi
@@ -96,8 +123,12 @@ if [ -f "$PROJECT_DIR/app.log" ]; then
 fi
 
 echo ""
-echo -e "${GREEN}Application stopped successfully! 🛑${NC}"
+echo -e "${GREEN}All services stopped successfully! 🛑${NC}"
 echo ""
-print_status "To start the application again, run:"
+print_status "To start the services again, run:"
 echo "  ./scripts/deploy.sh"
+echo ""
+print_status "Or start individual services:"
+echo "  sudo systemctl start $SERVICE_NAME"
+echo "  sudo systemctl start $TELEGRAM_SERVICE_NAME"
 echo "" 
