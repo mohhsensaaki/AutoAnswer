@@ -94,6 +94,57 @@ else
     exit 1
 fi
 
+# Step 8.5: Validate required files exist
+print_status "Validating required files..."
+if [ ! -f "$PROJECT_DIR/main.py" ]; then
+    print_error "main.py not found in $PROJECT_DIR"
+    exit 1
+fi
+print_status "main.py found ✓"
+
+if [ ! -f "$PROJECT_DIR/telegramlistener.py" ]; then
+    print_error "telegramlistener.py not found in $PROJECT_DIR"
+    exit 1
+fi
+print_status "telegramlistener.py found ✓"
+
+if [ ! -f "$PROJECT_DIR/.env" ]; then
+    print_warning ".env file not found. Creating a minimal .env file..."
+    cat > "$PROJECT_DIR/.env" <<ENVEOF
+# Telegram API credentials
+TELEGRAM_API_ID=
+TELEGRAM_API_HASH=
+SESSION_NAME=telegram_user_session
+CALLBACK_URL=
+CALLBACK_TIMEOUT=10
+CALLBACK_RETRIES=3
+ENABLE_MEDIA_DOWNLOAD=true
+MAX_MEDIA_SIZE=10
+MEDIA_GROUP_TIMEOUT=5.0
+DOWNLOAD_MEDIA_TYPES=all
+
+# Service configuration
+SERVICE_PORT=8110
+IS_PRODUCTION=no
+LOG_URL=.
+
+# Swagger credentials
+SWAGGER_USERNAME=admin
+SWAGGER_PASSWORD=admin
+ENVEOF
+    print_warning "Please edit $PROJECT_DIR/.env and fill in required values before starting services"
+else
+    print_status ".env file found ✓"
+fi
+
+# Validate Python executable exists
+PYTHON_EXEC="$PROJECT_DIR/$VENV_NAME/bin/python"
+if [ ! -f "$PYTHON_EXEC" ]; then
+    print_error "Python executable not found at $PYTHON_EXEC"
+    exit 1
+fi
+print_status "Python executable found ✓"
+
 # Step 9: Create and start systemd service
 print_status "Creating systemd service..."
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"

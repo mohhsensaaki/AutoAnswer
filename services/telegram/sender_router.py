@@ -2,6 +2,7 @@
 Telegram Sender Router - FastAPI endpoints for sending messages to Telegram.
 """
 
+import asyncio
 import logging
 
 from fastapi import APIRouter, HTTPException
@@ -10,9 +11,14 @@ from services.telegram.config import Config
 from services.telegram.models import (
     SendMessagesRequest,
     SendMessagesResponse,
-    SendMessageResult
+    SendMessageResult,
+    StartTypingRequest,
+    StartTypingResponse,
+    CancelTypingRequest,
+    CancelTypingResponse,
 )
 from services.telegram.sender_service import SenderService
+from services.telegram.typing_service import TypingService
 
 from telethon import TelegramClient
 
@@ -24,6 +30,9 @@ telegram_sender_router = APIRouter(tags=["Telegram Sender"])
 # Shared instances (initialized in lifespan)
 _telegram_client: TelegramClient | None = None
 _sender_service: SenderService | None = None
+
+# Typing background tasks (keyed by str(chat_id))
+_typing_tasks: dict[str, asyncio.Task] = {}
 
 
 async def init_telegram_sender():
@@ -50,7 +59,19 @@ async def init_telegram_sender():
 
 async def shutdown_telegram_sender():
     """Shutdown the Telegram client and sender service."""
-    global _telegram_client, _sender_service
+    global _telegram_client, _sender_service, _typing_tasks
+
+    # Cancel typing tasks first (their finally blocks send best-effort 'cancel')
+    if _typing_tasks:
+        tasks = list(_typing_tasks.values())
+        _typing_tasks.clear()
+        for t in tasks:
+            if not t.done():
+                t.cancel()
+        try:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        except Exception:
+            pass
     
     if _sender_service:
         await _sender_service.stop()
@@ -138,3 +159,54 @@ async def send_messages(request: SendMessagesRequest) -> SendMessagesResponse:
         failed=failed,
         results=results
     )
+
+
+@telegram_sender_router.post(
+    "/typing/start",
+    response_model=StartTypingResponse,
+    summary="Start typing indicator for a duration",
+    description="Set chat to typing mode for duration_seconds (returns immediately; runs in background)",
+)
+async def start_typing(request: StartTypingRequest) -> StartTypingResponse:
+    client = get_telegram_client()
+    try:
+        await TypingService.start_typing(
+            client=client,
+            chat_id=request.chat_id,
+            duration_seconds=request.duration_seconds,
+            registry=_typing_tasks,
+        )
+        return StartTypingResponse(
+            success=True,
+            chat_id=request.chat_id,
+            duration_seconds=request.duration_seconds,
+            error=None,
+        )
+    except Exception as e:
+        logger.error(f"Failed to start typing for chat {request.chat_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@telegram_sender_router.post(
+    "/typing/cancel",
+    response_model=CancelTypingResponse,
+    summary="Cancel typing indicator immediately",
+    description="Cancel typing mode immediately and stop any background typing task for that chat",
+)
+async def cancel_typing(request: CancelTypingRequest) -> CancelTypingResponse:
+    client = get_telegram_client()
+    try:
+        cancelled_task = await TypingService.cancel_typing(
+            client=client,
+            chat_id=request.chat_id,
+            registry=_typing_tasks,
+        )
+        return CancelTypingResponse(
+            success=True,
+            chat_id=request.chat_id,
+            cancelled_task=cancelled_task,
+            error=None,
+        )
+    except Exception as e:
+        logger.error(f"Failed to cancel typing for chat {request.chat_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
