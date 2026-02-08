@@ -5,7 +5,9 @@ from services.workflow.n8n.n8n_service import n8n_service
 from services.workflow.n8n.models import (
     WorkflowExecuteRequest,
     WorkflowExecuteResponse,
-    WorkflowTemplatesResponse
+    WorkflowTemplatesResponse,
+    ClassifierRequest,
+    ClassifierResponse
 )
 from typing import Dict, Any
 
@@ -76,7 +78,36 @@ async def execute_workflow(
         return JSONResponse(content=result.model_dump())
     except Exception as e:
         status_code = getattr(e, 'status_code', 400)
-        raise HTTPException(status_code=status_code, detail=str(e))       
+        raise HTTPException(status_code=status_code, detail=str(e))
+
+
+@n8n_router.post("/message/classifier", response_model=ClassifierResponse)
+@response_formatter
+async def classify_message(request: ClassifierRequest) -> ClassifierResponse:
+    """
+    Trigger classification of input text against a list of classes (async/fire-and-forget).
+    
+    Triggers the workflow with tags 'message_classifier' and 'v1'.
+    Does not wait for the classification result - returns immediately after triggering.
+    
+    Args:
+        request: ClassifierRequest containing:
+            - classes: List of class definitions (name and description)
+            - input: The text to classify
+            
+    Returns:
+        ClassifierResponse confirming the workflow was triggered
+    """
+    try:
+        # Convert ClassDefinition objects to dicts for the service
+        classes_data = [{"name": c.name, "description": c.description} for c in request.classes]
+        result = await n8n_service.classify_message(classes_data, request.input)
+        return JSONResponse(content=result.model_dump())
+    except Exception as e:
+        status_code = getattr(e, 'status_code', 400)
+        raise HTTPException(status_code=status_code, detail=str(e))
+
+
 @n8n_router.get("/health")
 async def health_check():
     """Health check endpoint for n8n workflow service"""

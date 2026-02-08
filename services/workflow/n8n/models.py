@@ -31,3 +31,20 @@ class N8nWorkflowUpdateRequest(BaseModel):
     nodes: List[Dict[str, Any]]
     connections: Dict[str, Any]
     settings: Optional[Dict[str, Any]] = None
+
+
+class ClassDefinition(BaseModel):
+    """Model for a single class definition with name and description"""
+    name: str
+    description: str
+
+
+class ClassifierRequest(BaseModel):
+    """Request model for message classification"""
+    classes: List[ClassDefinition]
+    input: str
+
+
+class ClassifierResponse(BaseModel):
+    """Response model for message classification (fire-and-forget)"""
+    message: Optional[str] = None

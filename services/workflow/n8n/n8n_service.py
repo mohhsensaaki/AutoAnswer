@@ -6,6 +6,7 @@ from services.common.log_creator import create_logger
 from services.workflow.n8n.models import ( 
     WorkflowTemplatesResponse,
     WorkflowExecuteResponse,
+    ClassifierResponse,
 )
 
 # Load environment variables
@@ -76,7 +77,53 @@ class N8nService:
             else:
                 raise Exception(
                     f"Workflow execution failed with status {response.status_code}: {response.text}")
-                    
+
+    async def classify_message(self, classes: List[Dict[str, str]], input_text: str) -> ClassifierResponse:
+        """
+        Classify input text against a list of classes (fire-and-forget).
+        Calls the workflow with tags: message_classifier, v1
+        Does not wait for the classification result.
+        
+        Args:
+            classes: List of class definitions with 'name' and 'description'
+            input_text: The input text to classify
+            
+        Returns:
+            ClassifierResponse indicating the request was triggered
+        """
+        self.logger.info(f"Triggering classification for message against {len(classes)} classes")
+        
+        # Build webhook URL for message_classifier workflow
+        workflow_url = f"{self.n8n_base_url}/webhook/{self.env_prefix}/message_classifier"
+        
+        # Prepare payload
+        payload = {
+            "classes": classes,
+            "input": input_text
+        }
+        
+        async with httpx.AsyncClient() as client:
+            # Fire request without waiting for full response
+            response = await client.post(
+                workflow_url,
+                json=payload,
+                headers=self._get_headers(),
+                timeout=5.0  # Short timeout - just ensure request is sent
+            )
+            
+            if response.status_code in (200, 202):
+                self.logger.info("Classification workflow triggered successfully")
+                return ClassifierResponse(
+                    message="Classification triggered successfully"
+                )
+            elif response.status_code == 404:
+                raise Exception(
+                    "Classifier workflow not found. Ensure a workflow with tags 'message_classifier' and 'v1' exists and is active."
+                )
+            else:
+                raise Exception(
+                    f"Failed to trigger classification: {response.status_code}"
+                )
     
     async def _create_workflow_from_template(self, workspace: str, segment: str, data: Dict[str, Any]) -> WorkflowExecuteResponse:
         """Create a new workflow from template and execute it"""
