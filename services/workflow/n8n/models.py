@@ -40,9 +40,12 @@ class ClassDefinition(BaseModel):
 
 
 class ClassifierRequest(BaseModel):
-    """Request model for message classification"""
+    """Request model for message classification - accepts any additional fields"""
     classes: List[ClassDefinition]
     input: str
+    
+    class Config:
+        extra = "allow"  # Allow additional fields to be passed through
 
 
 class ClassifierResponse(BaseModel):

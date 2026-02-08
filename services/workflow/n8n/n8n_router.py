@@ -6,7 +6,6 @@ from services.workflow.n8n.models import (
     WorkflowExecuteRequest,
     WorkflowExecuteResponse,
     WorkflowTemplatesResponse,
-    ClassifierRequest,
     ClassifierResponse
 )
 from typing import Dict, Any
@@ -83,25 +82,22 @@ async def execute_workflow(
 
 @n8n_router.post("/message/classifier", response_model=ClassifierResponse)
 @response_formatter
-async def classify_message(request: ClassifierRequest) -> ClassifierResponse:
+async def classify_message(request_data: Dict[str, Any] = Body(...)) -> ClassifierResponse:
     """
-    Trigger classification of input text against a list of classes (async/fire-and-forget).
+    Trigger classification workflow (async/fire-and-forget).
     
     Triggers the workflow with tags 'message_classifier' and 'v1'.
+    Passes the entire request body to the workflow.
     Does not wait for the classification result - returns immediately after triggering.
     
     Args:
-        request: ClassifierRequest containing:
-            - classes: List of class definitions (name and description)
-            - input: The text to classify
+        request_data: The data to pass to the workflow (any fields accepted)
             
     Returns:
         ClassifierResponse confirming the workflow was triggered
     """
     try:
-        # Convert ClassDefinition objects to dicts for the service
-        classes_data = [{"name": c.name, "description": c.description} for c in request.classes]
-        result = await n8n_service.classify_message(classes_data, request.input)
+        result = await n8n_service.classify_message(request_data)
         return JSONResponse(content=result.model_dump())
     except Exception as e:
         status_code = getattr(e, 'status_code', 400)

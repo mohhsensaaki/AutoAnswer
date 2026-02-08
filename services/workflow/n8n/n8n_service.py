@@ -78,35 +78,28 @@ class N8nService:
                 raise Exception(
                     f"Workflow execution failed with status {response.status_code}: {response.text}")
 
-    async def classify_message(self, classes: List[Dict[str, str]], input_text: str) -> ClassifierResponse:
+    async def classify_message(self, data: Dict[str, Any]) -> ClassifierResponse:
         """
-        Classify input text against a list of classes (fire-and-forget).
+        Trigger classification workflow (fire-and-forget).
         Calls the workflow with tags: message_classifier, v1
-        Does not wait for the classification result.
+        Passes the entire request body to the workflow.
         
         Args:
-            classes: List of class definitions with 'name' and 'description'
-            input_text: The input text to classify
+            data: The full request data to pass to the workflow
             
         Returns:
             ClassifierResponse indicating the request was triggered
         """
-        self.logger.info(f"Triggering classification for message against {len(classes)} classes")
+        self.logger.info("Triggering classification workflow")
         
         # Build webhook URL for message_classifier workflow
         workflow_url = f"{self.n8n_base_url}/webhook/{self.env_prefix}/message_classifier"
-        
-        # Prepare payload
-        payload = {
-            "classes": classes,
-            "input": input_text
-        }
         
         async with httpx.AsyncClient() as client:
             # Fire request without waiting for full response
             response = await client.post(
                 workflow_url,
-                json=payload,
+                json=data,
                 headers=self._get_headers(),
                 timeout=5.0  # Short timeout - just ensure request is sent
             )
