@@ -2,7 +2,7 @@
 
 # ==================================================================
 # Deployment Script for NewAfzzinaAI FastAPI Application
-# 
+#
 # This script:
 # 1. Collects environment variables from user (Database, OpenAI, etc.)
 # 2. Creates .env file with configuration
@@ -24,7 +24,6 @@ NC='\033[0m' # No Color
 PROJECT_NAME="NewAfzzinaAI"
 VENV_NAME="env"
 SERVICE_NAME="newafzzinaai"
-TELEGRAM_SERVICE_NAME="newafzzinaai-telegram"
 SERVICE_USER=$(whoami)
 SERVICE_PORT=8110
 
@@ -102,12 +101,6 @@ if [ ! -f "$PROJECT_DIR/main.py" ]; then
 fi
 print_status "main.py found ✓"
 
-if [ ! -f "$PROJECT_DIR/telegramlistener.py" ]; then
-    print_error "telegramlistener.py not found in $PROJECT_DIR"
-    exit 1
-fi
-print_status "telegramlistener.py found ✓"
-
 if [ ! -f "$PROJECT_DIR/.env" ]; then
     print_warning ".env file not found. Creating a minimal .env file..."
     cat > "$PROJECT_DIR/.env" <<ENVEOF
@@ -172,50 +165,17 @@ EOF
 
 print_status "Systemd service file created ✓"
 
-# Step 10: Create and start Telegram Listener systemd service
-print_status "Creating Telegram Listener systemd service..."
-TELEGRAM_SERVICE_FILE="/etc/systemd/system/${TELEGRAM_SERVICE_NAME}.service"
-
-sudo tee "$TELEGRAM_SERVICE_FILE" > /dev/null <<EOF
-[Unit]
-Description=$PROJECT_NAME Telegram Listener
-After=network.target
-
-[Service]
-Type=simple
-User=$SERVICE_USER
-WorkingDirectory=$PROJECT_DIR
-Environment=PATH=$PROJECT_DIR/$VENV_NAME/bin
-EnvironmentFile=$PROJECT_DIR/.env
-ExecStart=$PROJECT_DIR/$VENV_NAME/bin/python $PROJECT_DIR/telegramlistener.py
-Restart=always
-RestartSec=10
-StandardOutput=journal
-StandardError=journal
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-print_status "Telegram Listener systemd service file created ✓"
-
-# Reload systemd and enable the services
+# Reload systemd and enable the service
 print_status "Reloading systemd daemon..."
 sudo systemctl daemon-reload
 
 print_status "Enabling $SERVICE_NAME service..."
 sudo systemctl enable "$SERVICE_NAME"
 
-print_status "Enabling $TELEGRAM_SERVICE_NAME service..."
-sudo systemctl enable "$TELEGRAM_SERVICE_NAME"
-
 print_status "Starting $SERVICE_NAME service..."
 sudo systemctl start "$SERVICE_NAME"
 
-print_status "Starting $TELEGRAM_SERVICE_NAME service..."
-sudo systemctl start "$TELEGRAM_SERVICE_NAME"
-
-# Wait a moment for the services to start
+# Wait a moment for the service to start
 sleep 5
 
 # Check main service status
@@ -229,20 +189,8 @@ else
     exit 1
 fi
 
-# Check telegram listener service status
-if sudo systemctl is-active --quiet "$TELEGRAM_SERVICE_NAME"; then
-    print_status "Telegram Listener service is running ✓"
-else
-    print_error "Telegram Listener service failed to start!"
-    print_error "Service logs:"
-    sudo journalctl -u "$TELEGRAM_SERVICE_NAME" --no-pager -n 20
-    print_error "Check logs with: sudo journalctl -u $TELEGRAM_SERVICE_NAME -f"
-    exit 1
-fi
-
-print_status "Services status:"
+print_status "Service status:"
 sudo systemctl status "$SERVICE_NAME" --no-pager -l
-sudo systemctl status "$TELEGRAM_SERVICE_NAME" --no-pager -l
 
 # Step 10: Display useful information
 echo ""
@@ -272,13 +220,6 @@ echo "    • Stop: sudo systemctl stop $SERVICE_NAME"
 echo "    • Restart: sudo systemctl restart $SERVICE_NAME"
 echo "    • Status: sudo systemctl status $SERVICE_NAME"
 echo "    • Logs: sudo journalctl -u $SERVICE_NAME -f"
-echo ""
-echo "  Telegram Listener Service:"
-echo "    • Start: sudo systemctl start $TELEGRAM_SERVICE_NAME"
-echo "    • Stop: sudo systemctl stop $TELEGRAM_SERVICE_NAME"
-echo "    • Restart: sudo systemctl restart $TELEGRAM_SERVICE_NAME"
-echo "    • Status: sudo systemctl status $TELEGRAM_SERVICE_NAME"
-echo "    • Logs: sudo journalctl -u $TELEGRAM_SERVICE_NAME -f"
 echo ""
 print_status "To test the API:"
 echo "  curl http://localhost:$SERVICE_PORT/health"
